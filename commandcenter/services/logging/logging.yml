@@ -1,0 +1,74 @@
+# CommandCenter logging config file
+
+# You can provide your own config file by overriding the the LOGGING_CONFIG_PATH
+# env variable
+
+version: 1
+disable_existing_loggers: False
+
+formatters:
+    simple:
+        format: "%(asctime)s.%(msecs)03d | %(message)s"
+        datefmt: "%H:%M:%S"
+
+    standard:
+        (): commandcenter.logging.formatters.formatters.StandardFormatter
+
+
+filters:
+    correlation_id:
+        class: asgi_correlation_id.CorrelationIdFilter
+        uuid_length: 32
+    ip_address:
+        class: commandcenter.core.logging.filters.context.IPAddressFilter
+    username:
+        class: commandcenter.core.logging.filters.context.UserFilter
+
+handlers:
+    # The handlers we define here will output all logs they receieve by default
+    # but we include the `level` so it can be overridden by environment
+    console:
+        level: 0
+        class: logging.handlers.StreamHandler
+        formatter: simple
+
+    rotate:
+        level: 0
+        class: logging.handlers.TimedRotatingFileHandler
+        filename: commandcenter.log
+        when: midnight
+        backupCount: 7
+        formatter: standard
+        filters: [correlation_id, ip_address, username]
+
+loggers:
+    commandcenter.core:
+        level: INFO
+        handlers: [rotate]
+
+    commandcenter.core.integrations:
+        level: WARNING
+        handlers: [rotate]
+
+    commandcenter.core.comm:
+        level: WARNING
+        handlers: [rotate]
+
+    commandcenter.core.objcache:
+        level: WARNING
+        handlers: [rotate]
+
+    uvicorn:
+        level: INFO
+        handlers: [console]
+
+    fastapi:
+        level: INFO
+        handlers: [console]
+
+# The root logger: any logger without propagation disabled sends to here as well
+root:
+    # By default, we send logs from any library to the same location as the
+    # commandcenter logger
+    level: WARNING
+    handlers: [rotate]
