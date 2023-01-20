@@ -27,7 +27,7 @@ class IPAddressMiddleware(BaseHTTPMiddleware):
 class UserMiddleware(BaseHTTPMiddleware):
     """Middleware that sets the user context variable for logging.
     
-    The `AuthenticationMiddleware` must be installed to use this middleware.
+    The `AuthenticationMiddleware` must be installed for this middleware.
     """
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Assign the user value from `request.user` to the context variable."""

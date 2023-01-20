@@ -7,6 +7,7 @@ __all__ = [
     "LocalTimeseriesCollection",
 ]
 
-
+# TODO: Implement RedisTimeseries collection
 class AvailableTimeseriesCollections(ObjSelection):
+    DEFAULT = "default", LocalTimeseriesCollection
     LOCAL = "local", LocalTimeseriesCollection

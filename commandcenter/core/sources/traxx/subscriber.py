@@ -17,6 +17,7 @@ _LOGGER = logging.getLogger("commandcenter.core.sources.traxx")
 
 
 class TraxxSubscriber(AbstractSubscriber):
+    """Subscriber implementation for the Traxx data source."""
     def __init__(
         self,
         subscriptions: Set[TraxxSubscription],
@@ -24,11 +25,8 @@ class TraxxSubscriber(AbstractSubscriber):
         maxlen: int,
     ) -> None:
         super().__init__(subscriptions, callback, maxlen)
-        self._data_waiter: asyncio.Future = None
-        self._sensors = [
-            f"{subscription.sensor_id}-{subscription.asset_id}"
-            for subscription in subscriptions
-        ]
+        self.data_waiter: asyncio.Future = None
+        self.sensors = [subscription.key() for subscription in subscriptions]
 
     def publish(self, data: str) -> None:
         """Publish data to the subscriber. This method should only be called by
@@ -39,10 +37,10 @@ class TraxxSubscriber(AbstractSubscriber):
         except ValidationError:
             _LOGGER.error("Message validation failed", exc_info=True, extra={"raw": data})
 
-        super().publish(data)
+        self.data_queue.append(data)
         
-        waiter = self._data_waiter
-        self._data_waiter = None
+        waiter = self.data_waiter
+        self.data_waiter = None
         if waiter is not None and not waiter.done():
             waiter.set_result(None)
 
@@ -59,17 +57,11 @@ class TraxxSubscriber(AbstractSubscriber):
             data: A BaseModel containing all the data updates for a single sensor.
         """
         # If `False`, `stop` called before caller could begin iterating
-        if not self._stopped:
-            if self._stop_waiter is not None:
-                raise RuntimeError("Two coroutines cannot iterate over a subscriber simultaneously.")
-            loop = asyncio.get_running_loop()
-            stop = loop.create_future()
-            self._loop = loop
-            self._stop_waiter = stop
-            # Loop forever until `stop` is called by stream manager
+        if await self.start():
+            stop = self.stop_waiter
             while not stop.done():
-                if not self._data_queue:
-                    waiter = self._loop.create_future()
+                if not self.data_queue:
+                    waiter = self.loop.create_future()
                     self._data_waiter = waiter
 
                     await asyncio.wait([waiter, stop], return_when=asyncio.FIRST_COMPLETED)
@@ -83,11 +75,11 @@ class TraxxSubscriber(AbstractSubscriber):
                 # left
                 while True:
                     try:
-                        msg: TraxxSubscriberMessage = self._data_queue.popleft()
+                        msg: TraxxSubscriberMessage = self.data_queue.popleft()
                     except IndexError:
                         # Empty queue
                         break
-                    if f"{msg.sensor_id}-{msg.asset_id}" in self._sensors:
+                    if f"{msg.sensor_id}-{msg.asset_id}" in self.sensors:
                         # The traxx messages are guarenteed to be in monotonically
                         # increasingly order so we dont need to sort or filter
                         # the data here

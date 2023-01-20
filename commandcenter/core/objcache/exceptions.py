@@ -66,7 +66,7 @@ class UnhashableParamError(ObjCacheException):
                 segment.strip() for segment in
                 """Cannot hash argument '{}' (of type {}) in '{}'. To address this,
                 you can force this argument to be ignored by adding a leading
-                underscore to the arguments name in the function signature (eg. '{}')
+                underscore to the arguments name in the function signature (eg. '{}').
                 """.format(
                     arg_name_str,
                     arg_type,

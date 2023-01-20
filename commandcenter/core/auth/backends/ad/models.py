@@ -1,4 +1,4 @@
-from typing import Set
+from typing import Optional, Set
 
 from pydantic import Field
 
@@ -28,14 +28,14 @@ class LDAPItem(str):
 
 class ActiveDirectoryUser(BaseUser):
     """Active directory user model."""
+    scopes: Set[str]
     username: LDAPItem = Field(alias="cn")
     first_name: LDAPItem = Field(alias="givenName")
     last_name: LDAPItem = Field(alias="sn")
-    email: LDAPItem = Field(alias="mail", default=None)
-    upi: LDAPItem = Field(alias="employeeNumber", default=None)
-    company: LDAPItem = Field(default=None)
-    country: LDAPItem = Field(alias="c", default=None)
-    groups: Set[str]
+    email: Optional[LDAPItem] = Field(alias="mail", default=None)
+    upi: Optional[LDAPItem] = Field(alias="employeeNumber", default=None)
+    company: Optional[LDAPItem] = Field(default=None)
+    country: Optional[LDAPItem] = Field(alias="c", default=None)
 
     @property
     def is_authenticated(self) -> bool:

@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterable
 from datetime import datetime
-from typing import Callable, Dict, Set, cast
+from typing import Callable, Dict, Set
 
 from pydantic import ValidationError
 
@@ -18,6 +18,7 @@ _LOGGER = logging.getLogger("commandcenter.core.sources.pi_web")
 
 
 class PISubscriber(AbstractSubscriber):
+    """Subscriber implementation for the PI Web API data source."""
     def __init__(
         self,
         subscriptions: Set[PISubscription],
@@ -25,12 +26,11 @@ class PISubscriber(AbstractSubscriber):
         maxlen: int
     ) -> None:
         super().__init__(subscriptions, callback, maxlen)
-        self._chronological: Dict[str, datetime] = {
+        self.chronological: Dict[str, datetime] = {
             subscription.web_id: None for subscription in subscriptions
         }
-        self._data_waiter: asyncio.Future = None
-        subscriptions = cast(PISubscription, self.subscriptions)
-        self._web_ids = {subscription.web_id for subscription in subscriptions}
+        self.data_waiter: asyncio.Future = None
+        self.web_ids = {subscription.web_id for subscription in subscriptions}
 
     def publish(self, data: str) -> None:
         """Publish data to the subscriber. This method should only be called by
@@ -41,7 +41,7 @@ class PISubscriber(AbstractSubscriber):
         except ValidationError:
             _LOGGER.error("Message validation failed", exc_info=True, extra={"raw": data})
 
-        super().publish(data)
+        self.data_queue.append(data)
         
         waiter = self._data_waiter
         self._data_waiter = None
@@ -62,17 +62,11 @@ class PISubscriber(AbstractSubscriber):
             data: A JSON string containing all the data updates for a single WebId.
         """
         # If `False`, `stop` called before caller could begin iterating
-        if not self._stopped:
-            if self._stop_waiter is not None:
-                raise RuntimeError("Two coroutines cannot iterate over a subscriber simultaneously.")
-            loop = asyncio.get_running_loop()
-            stop = loop.create_future()
-            self._loop = loop
-            self._stop_waiter = stop
-            # Loop forever until `stop` is called by stream manager
+        if await self.start():
+            stop = self.stop_waiter
             while not stop.done():
-                if not self._data_queue:
-                    waiter = self._loop.create_future()
+                if not self.data_queue:
+                    waiter = self.loop.create_future()
                     self._data_waiter = waiter
 
                     await asyncio.wait([waiter, stop], return_when=asyncio.FIRST_COMPLETED)
@@ -86,7 +80,7 @@ class PISubscriber(AbstractSubscriber):
                 # left
                 while True:
                     try:
-                        msg: PISubscriberMessage = self._data_queue.popleft()
+                        msg: PISubscriberMessage = self.data_queue.popleft()
                     except IndexError:
                         # Empty queue
                         break
@@ -95,11 +89,11 @@ class PISubscriber(AbstractSubscriber):
                     for item in msg.items:
                         web_id = item.web_id
                         timestamp = item.items[-1].timestamp # Most recent timestamp
-                        if web_id in self._web_ids:
+                        if web_id in self.web_ids:
                             # Only yield the data if it is the next chronological
                             # item for that WebId. This ensures no duplicate data
                             # is sent
-                            last_timestamp = self._chronological.get(web_id)
+                            last_timestamp = self.chronological.get(web_id)
                             if last_timestamp is None or last_timestamp < timestamp:
                                 yield item.json()
-                            self._chronological[web_id] = timestamp
+                            self.chronological[web_id] = timestamp

@@ -1,9 +1,13 @@
 import logging
-from typing import Hashable, Sequence
+from typing import Sequence
 
 from commandcenter.core.integrations.abc import AbstractSubscriber
-from commandcenter.core.integrations.exceptions import FailedManager, SubscriptionLimitError
+from commandcenter.core.integrations.exceptions import (
+    FailedManager,
+    SubscriptionLimitError
+)
 from commandcenter.core.integrations.managers.base import BaseManager
+from commandcenter.core.integrations.models import BaseSubscription
 
 
 
@@ -21,69 +25,70 @@ class LocalManager(BaseManager):
     """
     def _start(self) -> None:
         """Start core tasks on manager."""
-        if self._core:
+        if self.core_tasks:
             return
         coros = [
             self._retrieve_data(),
             self._retrieve_errors(),
             self._poll_required_subscriptions()
         ]
-        tasks = [self._loop.create_task(coro) for coro in coros]
+        tasks = [self.loop.create_task(coro) for coro in coros]
         [t.add_done_callback(self._core_failed) for t in tasks]
-        self._core.extend(tasks)
+        self.core_tasks.extend(tasks)
 
     async def subscribe(
         self,
-        subscriptions: Sequence[Hashable]
+        subscriptions: Sequence[BaseSubscription]
     ) -> AbstractSubscriber:
         """Subscribe to the subscriptions on the client instance and configure
         a subscriber.
         
         Args:
-            subscriptions: A hashable sequence of elements to subscribe to
+            subscriptions: A sequence of subscriptions to subscribe to.
         
         Returns:
             subscriber: Async iterator for receiving incoming data from the
-                data source
+                data source.
         
         Raises:
             ClientSubscriptionError: An unhandled error occurred subscribing on
-                the client
+                the client.
             FailedManager: Cannot subscribe due to an unhandled exception on the
-                manager
-            SubscriptionError: Unable to subscribe on the client
-            SubscriptionLimitError: Max number of subscribers reached
+                manager.
+            SubscriptionError: Unable to subscribe on the client.
+            SubscriptionLimitError: Max number of subscribers reached.
         """
-        if self._failed:
+        if self.failed:
             assert self.exceptions
             raise FailedManager(self.exceptions)
         self._start()
-        if len(self._subscribers) >= self._max_subscribers:
-            raise SubscriptionLimitError(self._max_subscribers)
+        if len(self.subscribers) >= self.max_subscribers:
+            raise SubscriptionLimitError(self.max_subscribers)
         subscriptions = set(subscriptions)
         await self._subscribe(subscriptions)
-        subscriber = self._subscriber(
+        subscriber = self.subscriber(
             subscriptions,
-            self,
-            self._maxlen,
-            self._loop
+            self.subscriber_lost,
+            self.maxlen,
         )
-        self._subscribers.append(subscriber)
-        _LOGGER.debug("Added subscriber %i of %i", len(self._subscribers), self._max_subscribers)
+        self.subscribers.append(subscriber)
+        _LOGGER.debug("Added subscriber %i of %i", len(self.subscribers), self.max_subscribers)
         return subscriber
 
     async def _retrieve_data(self) -> None:
         """Core task to retrieve data from client and publish it to subscribers."""
         async for msg in self.client.messages():
-            for subscriber in self._subscribers: subscriber.publish(msg)
+            for subscriber in self.subscribers: subscriber.publish(msg)
 
     async def _retrieve_errors(self) -> None:
-        """Core task to retrieve connection errors the client. If a connection
-        error affects a subscriber, the subscriber will be stopped.
+        """Core task to retrieve connection errors from the client.
+        
+        If a connection error affects a subscriber, the subscriber will be
+        stopped.
         """
         async for err in self.client.errors():
             subscriptions = err.subscriptions
-            for subscriber in self._subscribers:
+            for subscriber in self.subscribers:
                 if subscriptions.difference(subscriber.subscriptions) != subscriptions:
                     subscriber.stop()
                     _LOGGER.warning(
@@ -96,7 +101,7 @@ class LocalManager(BaseManager):
         if a subscription is no longer needed.
         """
         while True:
-            await self._event.wait()
+            await self.subscription_event.wait()
             try:
                 subscriptions = self.subscriptions
                 # Check required subscriptions (from subscribers) against subscriptions
@@ -107,8 +112,8 @@ class LocalManager(BaseManager):
                     _LOGGER.debug("Unsubscribing from %i subscriptions", len(unubscribe))
                     # We dont want to block this coroutine so we unsubscribe in
                     # the background
-                    t = self._loop.create_task(self.client.unsubscribe(unubscribe))
+                    t = self.loop.create_task(self.client.unsubscribe(unubscribe))
                     t.add_done_callback(self._task_complete)
-                    self._background.append(t)
+                    self.background_tasks.append(t)
             finally:
-                self._event.clear()
+                self.subscription_event.clear()

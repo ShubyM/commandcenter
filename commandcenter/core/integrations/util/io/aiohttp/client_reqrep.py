@@ -13,13 +13,13 @@ from commandcenter.core.integrations.util.io.aiohttp.auth import AuthFlow
 
 
 class ClientResponse_(ClientResponse):
-    """Custom response handler for `ClientSession`"""
+    """Custom response handler for `aiohttp.ClientSession`"""
     async def start(self, connection: Connection, release: bool = True) -> None:
         self._closed = False
         self._protocol = connection.protocol
         self._connection = connection
 
-        # when auth flow completes, the response may have already been "started"
+        # when an auth flow completes, the response may have already been "started"
         # (i.e it will have a content attribute which is not None). ClientSession
         # will call `start` when the auth flow completes so we check for content
         # to avoid errors post auth flow
@@ -70,17 +70,18 @@ class ClientResponse_(ClientResponse):
 
     def start_next_cycle(self) -> None:
         # this prevent the connection from being released when the __del__ method
-        # is called (which occurrs on each req/rep cycle)
+        # is called (which could occurrs on each req/rep cycle)
         self._connection = None
 
     def release_on_read(self) -> None:
+        # Reset the flags in the response so the connection is released on read
         if self.content is not None:
             self.content.on_eof(self._response_eof)
     
 
 def auth_request(flow: AuthFlow) -> Type[ClientRequest]:
     class ClientRequest_(ClientRequest):
-        """Custom request handler for `ClientSession`"""
+        """Custom request handler for `aiohttp.ClientSession`"""
         async def send(self, conn: Connection) -> ClientResponse_:
             auth_flow = flow.auth_flow(self, conn)
             try:
@@ -112,12 +113,15 @@ def auth_request(flow: AuthFlow) -> Type[ClientRequest]:
     return ClientRequest_
 
 
-def create_auth_handlers(flow: AuthFlow) -> Tuple[Type[ClientRequest], Type[ClientResponse_]]:
+def create_auth_handlers(flow: AuthFlow) -> Tuple[Type[ClientRequest], Type["ClientResponse_"]]:
     """Create a pair of `ClientRequest`/`ClientResponse` objects that can be
-    used in a `ClientSession` with the authentication scheme.
+    used in an `aiohttp.ClientSession` with the authentication scheme.
+
+    The req/rep classes should be passed to 'request_class' and 'response_class'
+    arguments respectively.
 
     Args:
-        flow: The auth flow to use for all requests.
+        flow: The auth flow to use for requests.
 
     Returns:
         handlers: request/response tuple of type `ClientRequest` and `ClientResponse`

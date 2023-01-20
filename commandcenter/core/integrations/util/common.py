@@ -40,7 +40,7 @@ def split_range(
     end_time: datetime,
     dt: timedelta
 ) -> Tuple[List[datetime], List[datetime]]:
-    """Split a time range into smaller ranges"""
+    """Split a time range into smaller ranges."""
     start_times = []
     end_times = []
     

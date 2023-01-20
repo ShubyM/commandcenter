@@ -11,11 +11,11 @@ from pydantic import ValidationError
 
 from commandcenter.core.integrations.abc import AbstractClient, AbstractConnection
 from commandcenter.core.integrations.models import ErrorMessage
-from commandcenter.core.sources.traxx.exceptions import ExpiredSession
+from commandcenter.core.integrations.util import TIMEZONE
+from commandcenter.core.sources.traxx.exceptions import TraxxExpiredSession
 from commandcenter.core.sources.traxx.http.client import TraxxClient
 from commandcenter.core.sources.traxx.http.data.util import handle_request
 from commandcenter.core.sources.traxx.models import TraxxSensorMessage, TraxxSubscription
-from commandcenter.core.integrations.util import TIMEZONE
 
 
 
@@ -97,7 +97,7 @@ class TraxxConnection(AbstractConnection):
                         tz=self.timezone
                     )
                 )
-            except ExpiredSession:
+            except TraxxExpiredSession:
                 _LOGGER.warning("Failed to retireve sensor data, session expired.")
                 raise
             except Exception:
@@ -149,7 +149,7 @@ class TraxxConnection(AbstractConnection):
 
 
 class TraxxStreamClient(AbstractClient):
-    """Client for streaming data from Traxx."""
+    """Client implementation for 'real-time' Traxx data."""
     def __init__(
         self,
         session: ClientSession,
@@ -165,7 +165,7 @@ class TraxxStreamClient(AbstractClient):
         super().__init__(max_buffered_messages)
         self.client = TraxxClient(session)
         self.max_subscriptions = max_subscriptions
-        self._connection_factory = functools.partial(
+        self.connection_factory = functools.partial(
             TraxxConnection,
             self.connection_lost,
             update_interval=update_interval,
@@ -182,36 +182,11 @@ class TraxxStreamClient(AbstractClient):
     @property
     def closed(self) -> bool:
         """`True` if the underlying session is closed."""
-        return self.session.closed
-
-    @property
-    def subscriptions(self) -> Set[str]:
-        """Return a set of all the PI tag subscriptions for the client."""
-        subscriptions = set()
-        for conn in self._connections:
-            subscriptions.update(conn.subscriptions)
-        return subscriptions
-    
-    @property
-    def session(self) -> ClientSession:
-        return self.client.session
-
-    def connection_lost(self, connection: "TraxxConnection") -> None:
-        """Callback for `PIChannelConnection` indicating the connection has been lost."""
-        exc = connection.exception
-        if exc is not None:
-            self._errors_queue.put_nowait(
-                ErrorMessage(
-                    exc=exc,
-                    subscriptions=connection.subscriptions
-                )
-            )
-        if connection in self._connections:
-            self._connections.remove(connection)
+        return self.client.session.closed
 
     async def close(self) -> None:
-        for connection in self._connections: connection.stop()
-        await self.session.close()
+        for connection in self.connections: connection.stop()
+        await self.client.close()
 
     async def subscribe(self, subscriptions: Sequence[TraxxSubscription]) -> bool:
         """Subscribe the client to a sequence of Traxx sensors.
@@ -226,12 +201,12 @@ class TraxxStreamClient(AbstractClient):
 
         if self.capacity >= len(subscriptions):
             subscriptions = subscriptions.difference(self.subscriptions)
-            connections = [self._connection_factory() for _ in range(len(subscriptions))]
+            connections = [self.connection_factory() for _ in range(len(subscriptions))]
             for subscription, connection in zip(subscriptions, connections):
                 # Connection cant fail to start
-                await connection.start(subscription, self._data_queue, self.client)
+                await connection.start(subscription, self.data_queue, self.client)
                 connection.toggle()
-            self._connections.extend(connections)
+            self.connections.extend(connections)
             return True
         return False
 
@@ -248,7 +223,7 @@ class TraxxStreamClient(AbstractClient):
         dne = subscriptions.difference(self.subscriptions)
         subscriptions = subscriptions.difference(dne)
 
-        connections = cast(List[TraxxConnection], self._connections)
+        connections = cast(List[TraxxConnection], self.connections)
         if subscriptions:
             for subscription in subscriptions:
                 for connection in connections:

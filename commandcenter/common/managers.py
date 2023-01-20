@@ -10,7 +10,7 @@ from commandcenter.core.integrations.abc import AbstractManager
 from commandcenter.core.integrations.managers import AvailableManagers
 from commandcenter.core.objcache import singleton
 from commandcenter.core.util.context import source_context
-from commandcenter.services.sources import build_client_for_manager
+from commandcenter.sources import build_client_for_manager
 
 
 
@@ -34,7 +34,7 @@ def inject_manager_dependencies(func) -> AbstractManager:
 
     @functools.wraps(func)
     async def async_wrapper(*args, **kwargs) -> AbstractManager:
-        source = source_context.get()
+        source = source_context.get() # Requires dependency
         if source is None:
             raise RuntimeError(
                 "Source context not set. Ensure context dependency is added to path "
@@ -52,7 +52,10 @@ async def get_manager(
     source: str,
     **kwargs
 ) -> AbstractManager:
-    """Initialize manager."""
+    """Initialize manager from the environment configuration.
+    
+    This can also be used as a dependency.
+    """
     client, subscriber, add_kwargs = build_client_for_manager(source, manager)
     kwargs.update(**add_kwargs)
     return manager(client, subscriber, **kwargs)

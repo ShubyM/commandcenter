@@ -7,16 +7,17 @@ from pendulum.datetime import DateTime
 from pydantic import BaseModel, root_validator, validator
 
 from commandcenter.core.integrations.models import BaseSubscription
-from commandcenter.core.sources import AvailableSources
 from commandcenter.core.integrations.util.common import (
     in_timezone,
     isoparse,
     json_loads,
     to_camel
 )
+from commandcenter.core.sources import AvailableSources
 
 
 
+# TODO: Expand to AF elements and attributes
 def restrict_obj_type(v: str) -> str:
     if v != PIObjType.POINT:
         raise ValueError("Only obj_type 'point' is currently supported")
@@ -24,6 +25,7 @@ def restrict_obj_type(v: str) -> str:
 
 
 class WebIdType(str, Enum):
+    """https://docs.aveva.com/bundle/pi-web-api-reference/page/help/topics/webid-type.html"""
     FULL = "Full"
     IDONLY = "IDOnly"
     PATHONLY = "PathOnly"
@@ -38,6 +40,7 @@ class PIObjType(str, Enum):
 
 
 class PIObjSearch(BaseModel):
+    """Model for client to search for a WebId based on a search key."""
     search: str
     web_id_type: WebIdType = WebIdType.FULL
     obj_type: PIObjType = PIObjType.POINT
@@ -55,6 +58,7 @@ class PIObjSearch(BaseModel):
         )
 
 class PISubscription(BaseSubscription):
+    """Model for all PI object subscriptions."""
     web_id: str
     name: Optional[str] = None
     web_id_type: WebIdType = WebIdType.FULL
@@ -74,6 +78,7 @@ class PIBaseChannelMessage(BaseModel):
     """
     Base message for data returned from 'streamsets/channels' endpoint.
 
+    ```
     Sample Message (Raw)
     {
     "Links": {},
@@ -134,8 +139,9 @@ class PIBaseChannelMessage(BaseModel):
         }
     ]
     }
-
+    ```
     Target conversion to
+    ```
     [
         {
             'name': 'AIC681059.PV',
@@ -159,6 +165,7 @@ class PIBaseChannelMessage(BaseModel):
             ]
         }
     ]
+    ```
     """
     class Config:
         alias_generator = to_camel
@@ -268,6 +275,7 @@ class PIMessage(PIBaseChannelMessage):
 
 
 class PIBaseSubscriberMessage(BaseModel):
+    """Base model for PI subscriber messages."""
     class Config:
         extra = 'forbid'
         json_dumps=lambda _obj, default: orjson.dumps(_obj, default=default).decode()
@@ -288,5 +296,5 @@ class PISubscriberItem(PIBaseSubscriberMessage):
 
 
 class PISubscriberMessage(PIBaseSubscriberMessage):
-    """Model for PI messages from a subscriber."""
+    """Model PI subscriber messages."""
     items: List[PISubscriberItem]

@@ -4,15 +4,15 @@ from typing import List, Sequence, Optional, Tuple
 
 from pydantic import ValidationError
 
-from commandcenter.core.sources.pi_web.exceptions import ContentError
+from commandcenter.core.integrations.types import JSONContent
+from commandcenter.core.objcache import memo
+from commandcenter.core.sources.pi_web.exceptions import PIWebContentError
 from commandcenter.core.sources.pi_web.http.client import PIWebClient
 from commandcenter.core.sources.pi_web.http.data.util import handle_request
 from commandcenter.core.sources.pi_web.models import (
     PIObjSearch,
     PISubscription
 )
-from commandcenter.core.integrations.types import JSONContent
-from commandcenter.core.objcache import memo
 
 
 
@@ -27,14 +27,14 @@ async def get_dataserver_webid(_client: PIWebClient, dataserver: Optional[str] =
 
     Raises:
         ClientException: Error in `aiohttp.ClientSession`.
-        ContentError: Query returned no results.
+        PIWebContentError: Query returned no results.
     """
     data = await handle_request(
         _client.dataservers.list(selectedFields="Items.Name;Items.WebId")    
     )
     items = data.get("Items")
     if not items or not isinstance(items, list):
-        raise ContentError(
+        raise PIWebContentError(
             "Could not get dataserver WebId. No items returned in response"
         )
     if dataserver:
@@ -42,7 +42,7 @@ async def get_dataserver_webid(_client: PIWebClient, dataserver: Optional[str] =
             if item["WebId"] == dataserver:
                 return item["WebId"]
         else:
-            raise ContentError(f"WebId not found for '{dataserver}'")
+            raise PIWebContentError(f"WebId not found for '{dataserver}'")
     else:
         return items[0]["WebId"]
 
@@ -59,7 +59,7 @@ async def search_points(
 
     Note: This will eventually be deprecated for a more universal search tool
     through the AF SDK. We have to search for the WebId's through the dataserver
-    instead of the /search endpoint because the crawler for the indexed search
+    instead of the '/search' endpoint because the crawler for the indexed search
     is unreliable in some versions of the PI Web API and frequently goes down.
     """
     points = list(points)

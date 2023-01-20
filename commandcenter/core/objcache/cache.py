@@ -69,6 +69,9 @@ def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
         """This function wrapper will only call the underlying function in
         the case of a cache miss.
         """
+        # concurrent calls to an @singleton or @memo decorated function will
+        # most likely experience simultaneous cache misses for the same arguments
+        # if we dont lock the execution of the wrapper here
         with t_lock:
             rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
             try:
@@ -104,19 +107,6 @@ def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
                 except StopIteration:
                     pass
                 return return_value
-    
-    # def iter_cache():
-    #     """Iterate over function cache yielding each value one by one.
-        
-    #     This method only applies to singleton caches as they often need to resources
-    #     cleaned up when the application exits.
-    #     """
-    #     if cached_func.cache_type is CacheType.SINGLETON:
-    #         cache = cached_func.get_function_cache(function_key)
-    #         for value in cache:
-    #             yield value
-    #     elif cached_func.cache_type is CacheType.MEMO:
-    #         raise RuntimeWarning("Cannot iterate over a memo cache.")
 
     def clear():
         """Clear the wrapped function's associated cache."""
@@ -129,7 +119,6 @@ def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
         cache_wrapper = wrapper
 
     cache_wrapper.clear = clear  # type: ignore
-    # cache_wrapper.iter_cache = iter_cache # type: ignore
 
     return cache_wrapper
 

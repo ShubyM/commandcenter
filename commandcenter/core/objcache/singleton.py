@@ -17,7 +17,7 @@ from commandcenter.core.objcache.util import CacheType
 _LOGGER = logging.getLogger("commandcenter.core.objcache.singleton")
 
 
-class SingletonCaches:
+class SingletonCaches(Iterable[Any]):
     """Manages all `SingletonCache` instances"""
     def __init__(self):
         self._caches_lock = threading.Lock()
@@ -52,6 +52,13 @@ class SingletonCaches:
         """Clear all singleton caches."""
         with self._caches_lock:
             self._function_caches = {}
+
+    def __iter__(self) -> Iterable[Any]:
+        with self._caches_lock:
+            for cache in self._function_caches.values():
+                with cache._mem_cache_lock:
+                    for obj in cache._mem_cache.values():
+                        yield obj
 
 
 # Singleton SingletonCaches instance
@@ -113,6 +120,16 @@ class SingletonCache(AbstractCache):
                 yield value
 
 
+def iter_singletons() -> Iterable[Any]:
+    """Iterate over all singleton objects in the cache.
+    
+    This can be useful in 'shutdown' functions when you want to make sure all
+    resources in cached instances are cleaned up appropriately.
+    """
+    for obj in _singleton_caches:
+        yield obj
+
+
 class SingletonAPI:
     """Implements the public singleton API: the `@singleton` decorator,
     and `singleton.clear()`.
@@ -137,41 +154,37 @@ class SingletonAPI:
         ... def get_database_session(url):
         ...     # Create a database session object that points to the URL.
         ...     return session
-        ...
-        >>> s1 = get_database_session(SESSION_URL_1)
         >>> # Actually executes the function, since this is the first time it was
-        >>> # encountered.
-        >>>
-        >>> s2 = get_database_session(SESSION_URL_1)
+        ... # encountered.
+        ... s1 = get_database_session(SESSION_URL_1)
         >>> # Does not execute the function. Instead, returns its previously computed
-        >>> # value. This means that now the connection object in s1 is the same as in s2.
-        >>>
-        >>> s3 = get_database_session(SESSION_URL_2)
-        >>> # This is a different URL, so the function executes.
-        By default, all parameters to a singleton function must be hashable.
-        Any parameter whose name begins with ``_`` will not be hashed. You can use
-        this as an "escape hatch" for parameters that are not hashable:
-        >>> @singleton
+        ... # value. This means that now the connection object in s1 is the same as in s2.
+        ... s2 = get_database_session(SESSION_URL_1)
+        >>> # This is a different URL, so the function executes
+        ... s3 = get_database_session(SESSION_URL_2)
+        >>> # By default, all parameters to a singleton function must be hashable.
+        ... # Any parameter whose name begins with `_` will not be hashed. You can use
+        ... # this as an "escape hatch" for parameters that are not hashable
+        ... @singleton
         ... def get_database_session(_sessionmaker, url):
         ...     # Create a database connection object that points to the URL.
         ...     return connection
-        ...
-        >>> s1 = get_database_session(create_sessionmaker(), DATA_URL_1)
         >>> # Actually executes the function, since this is the first time it was
-        >>> # encountered.
-        >>>
-        >>> s2 = get_database_session(create_sessionmaker(), DATA_URL_1)
+        ... # encountered.
+        ... s1 = get_database_session(create_sessionmaker(), DATA_URL_1)
         >>> # Does not execute the function. Instead, returns its previously computed
-        >>> # value - even though the _sessionmaker parameter was different
-        >>> # in both calls.
-        A singleton function's cache can be procedurally cleared:
-        >>> @singleton
+        ... # value - even though the _sessionmaker parameter was different
+        ... # in both calls.
+        ... s2 = get_database_session(create_sessionmaker(), DATA_URL_1)
+        >>> # A singleton function's cache can be procedurally cleared
+        ... @singleton
         ... def get_database_session(_sessionmaker, url):
         ...     # Create a database connection object that points to the URL.
         ...     return connection
-        ...
-        >>> get_database_session.clear()
         >>> # Clear all cached entries for this function.
+        ... get_database_session.clear()
+        >>> # You can clear also clear all cached entries
+        ... singleton.clear()
         """
         if func is None:
             return lambda f: create_cache_wrapper(

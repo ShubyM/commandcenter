@@ -17,6 +17,7 @@ from commandcenter.core.integrations.util.common import (
 
 
 class SensorTypes(str, Enum):
+    """Available sensory types in Traxx."""
     PROXIMITY = "proximity"
     VOLTS = "volts"
     TEMP = "temp"
@@ -25,10 +26,15 @@ class SensorTypes(str, Enum):
 
 
 class TraxxSubscription(BaseSubscription):
+    """Model for all Traxx subscriptions."""
     asset_id: int
     sensor_id: str
     sensor_type: SensorTypes = SensorTypes.PROXIMITY
     source: AvailableSources = AvailableSources.TRAXX
+
+    def key(self) -> str:
+        """Unique id for subscription."""
+        return f"{self.sensor_id}-{self.asset_id}"
 
 
 class BaseTraxxSensorMessage(BaseModel):
@@ -41,6 +47,7 @@ class BaseTraxxSensorMessage(BaseModel):
 
 
 class TraxxSensorItem(BaseTraxxSensorMessage):
+    """Model for a single sample from Traxx."""
     timestamp: DateTime
     value: float
 
@@ -98,6 +105,7 @@ class TraxxSensorItem(BaseTraxxSensorMessage):
 
 
 class TraxxSensorMessage(BaseTraxxSensorMessage):
+    """Model for Traxx client message."""
     asset_id: int
     sensor_id: str
     items: List[TraxxSensorItem]
@@ -114,7 +122,7 @@ class TraxxSensorMessage(BaseTraxxSensorMessage):
 
 
 class BaseTraxxSubscriberMessage(BaseModel):
-    """Base model for a messages passed on from a subscriber."""
+    """Base model for Traxx subscriber message."""
     class Config:
         extra = 'forbid'
         json_dumps=lambda _obj, default: orjson.dumps(_obj, default=default).decode()
@@ -122,11 +130,13 @@ class BaseTraxxSubscriberMessage(BaseModel):
 
 
 class TraxxSubscriberItem(BaseTraxxSubscriberMessage):
+    """Model for a single sample from Traxx."""
     timestamp: str
     value: float
 
 
 class TraxxSubscriberMessage(BaseTraxxSubscriberMessage):
+    """Model for Traxx subscriber message."""
     asset_id: int
     sensor_id: str
     items: List[TraxxSubscriberItem]

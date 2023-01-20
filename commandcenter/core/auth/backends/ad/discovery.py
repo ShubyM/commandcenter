@@ -31,7 +31,7 @@ def discover_domain_controllers(
     max_workers: int = 4,
     limit: int = 3
 ) -> None:
-    """Discover all domain controller servers associated to a specific domain name.
+    """Get all domain controller servers associated to a specific domain name.
     
     This function returns a list of the host names discovered sorted by mean RTT.
     By default, this function tests the LDAP port for all hostnames returned by
@@ -39,16 +39,17 @@ def discover_domain_controllers(
     specify a different port to test the connection.
 
     Args:
-        domain: The domain name to search for domain controller servers.
-        limit: An optional limit of the number of hosts to return.
+        domain: The domain name to search.
         port: The port to test the RTT to the host.
-        family: The `AddressFamily` of the socket to create.
-        sock_type: The `SocketType` to create.
-        protocol: The protocol number to use for the connection.
-        timoeut: The socket timeout before the host is determined to be unreachable.
+        family: The address family of the socket.
+        sock_type: The socket type.
+        protocol: The protocol number.
+        timeout: The socket timeout before the host is determined to be unreachable.
         mean_rtt_attempts: The number of connections to make to a single host. The
             average time to connect between all attempts will be factored into
             the mean RTT.
+        max_workers: The number of threads to use to test connections.
+        limit: An optional limit of the number of hosts to return.
 
     Returns:
         hosts: The sorted list of hostnames.
@@ -86,7 +87,7 @@ def discover_domain_controllers(
     if not hosts:
         raise NoHostsFound(domain)
 
-    _LOGGER.info("Discovered %i hosts for domain %s", len(hosts), domain)
+    _LOGGER.info("Discovered %i hosts for %s", len(hosts), domain)
 
     sock_params = (family, sock_type, protocol)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:

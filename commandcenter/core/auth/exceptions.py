@@ -9,4 +9,9 @@ class AuthError(CommandCenterException):
 
 
 class UserNotFound(AuthError):
-    """Raised when username is not found in the backend."""
+    """Raised when a user is not found in the backend databse."""
+    def __init__(self, username: str) -> None:
+        self.username = username
+
+    def __str__(self) -> str:
+        return "{} not found.".format(self.username)

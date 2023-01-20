@@ -17,12 +17,12 @@ class MongoWorker:
     """Manages the submission of logs to MongoDB in a background thread."""
     def __init__(
         self,
-        database_connection_url: str,
+        connection_url: str,
         database_name: str,
         flush_interval: int,
         buffer_size: int
     ) -> None:
-        self.database_connection_url = database_connection_url
+        self.connection_url = connection_url
         self.database_name = database_name
         self.flush_interval = flush_interval
         self.buffer_size = buffer_size
@@ -50,14 +50,13 @@ class MongoWorker:
         atexit.register(self.stop)
 
     def _send_logs_loop(self):
-        """
-        Should only be the target of the `send_thread` as it creates a new event loop.
-        Runs until the `stop_event` is set.
+        """Should only be the target of the `send_thread` as it creates a new
+        event loop. Runs until the `stop_event` is set.
         """
         # Initialize commandcenter in this new thread, but do not reconfigure logging
         try:
             with MongoClient(
-                self.database_connection_url,
+                self.connection_url,
                 maxPoolSize=1,
                 serverSelectionTimeout=10000
             ) as client:
@@ -80,7 +79,7 @@ class MongoWorker:
 
         except Exception:
             if logging.raiseExceptions and sys.stderr:
-                sys.stderr.write("--- Commandcenter logging error ---\n")
+                sys.stderr.write("--- CommandCenter logging error ---\n")
                 sys.stderr.write("The log worker encountered a fatal error.\n")
                 traceback.print_exc(file=sys.stderr)
                 sys.stderr.write(self.worker_info())
@@ -190,9 +189,9 @@ class MongoWorker:
             self._flush_event.set()
             if block:
                 # TODO: Sometimes the log worker will deadlock and never finish
-                #       so we will only block for 30 seconds here. When logging is
-                #       refactored, this deadlock should be resolved.
-                #       Monitor Prefect Orion logging for fix.
+                # so we will only block for 30 seconds here. When logging is
+                # refactored, this deadlock should be resolved.
+                # Monitor Prefect Orion logging for fix.
                 self._send_logs_finished_event.wait(30)
 
     def start(self) -> None:
@@ -226,6 +225,15 @@ class MongoHandler(logging.Handler):
 
     Sends log records to the log worker which manages sending batches of logs in
     the background.
+
+    Args:
+        connection_url: Mongo DSN connection url.
+        database_name: The database to save logs to.
+        flush_interval: The time between flushes on the log worker.
+        flush_level: The log level which will trigger an automatic flush of the
+            queue.
+        buffer_size: The number of logs that can be buffered before a flush
+            is done to the database.
     """
     worker: MongoWorker = None
 

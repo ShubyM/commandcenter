@@ -16,8 +16,8 @@ class requires:
 
     Args:
         scopes: The required scopes to access the resource
-        any_: If `True` and user has any of the scopes authorization will
-            succeed else, the user will need all scopes
+        any_: If `True` and the user has any of the scopes, authorization will
+            succeed. Otherwise, the user will need all scopes.
         raise_on_no_scopes: If `True` a `NotConfigured` error will be raised
             when an endpoint with no required scopes is hit.
 
@@ -45,6 +45,13 @@ class requires:
     ... @router_unprotected.get("/me")
     ... async def get_me(...):
     ...     # The user only need be authenticated (valid user) to access this resource
+    ...     ...
+    >>> # Unless `raise_on_no_scopes` = `True`, then providing no scopes will
+    ... # raise an error
+    >>> @router.get("/usercreds", dependencies=[Depends(requires(raise_on_no_scopes=True))])
+    ... async def get_creds(...):
+    ...     # This will raise a `NotConfigured` error because no scopes were
+    ...     # provided to the dependency
     ...     ...
     """
     def __init__(
@@ -82,7 +89,7 @@ class requires:
         """
         if not self.scopes:
             if self.raise_on_no_scopes:
-                raise NotConfigured()
+                raise NotConfigured("No scopes specified for this endpoint.")
             return
         scopes = request.auth.scopes
         if self.any and any([permission in scopes for permission in self.scopes]):

@@ -22,7 +22,7 @@ class SubscriptionLimitError(IntegrationError):
         self.max_subscribers = max_subscribers
 
     def __str__(self) -> str:
-        return "Subscription limit reached ({})".format(self.max_subscribers)
+        return "Subscription limit reached ({}).".format(self.max_subscribers)
 
 
 class ClientSubscriptionError(IntegrationError):
@@ -33,7 +33,7 @@ class ClientSubscriptionError(IntegrationError):
         self.exc = exc
 
     def __str__(self) -> str:
-        return "Unable to subscribe due to an unhandled exception in the client"
+        return "Unable to subscribe due to an unhandled exception in the client."
 
 
 class FailedManager(IntegrationError):
@@ -44,4 +44,4 @@ class FailedManager(IntegrationError):
         self.exc = exc
 
     def __str__(self) -> str:
-        return "Unable to subscribe due to {} error(s) in manager".format(len(self.exc))
+        return "Unable to subscribe due to {} error(s) in manager.".format(len(self.exc))

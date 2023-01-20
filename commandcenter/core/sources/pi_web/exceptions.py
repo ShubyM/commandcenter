@@ -8,13 +8,13 @@ class PIWebIntegrationError(IntegrationError):
     """Base exception for pi_web integration errors."""
 
 
-class ContentError(PIWebIntegrationError):
+class PIWebContentError(PIWebIntegrationError):
     """Raised when a required property is not present in the body of a successful
     response.
     """
 
 
-class ResponseError(PIWebIntegrationError):
+class PIWebResponseError(PIWebIntegrationError):
     """Raised when the `Errors` property is present in the body of successful
     HTTP response.
     """
@@ -22,4 +22,4 @@ class ResponseError(PIWebIntegrationError):
         self.errors = errors
 
     def __str__(self) -> str:
-        return "{} errors returned in response body".format(len(self.errors))
+        return "{} errors returned in response body.".format(len(self.errors))

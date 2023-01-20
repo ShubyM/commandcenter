@@ -99,7 +99,7 @@ def json_dumps(value: Dict[str, Any]) -> str:
             pass
 
     json_dumps = functools.partial(
-        json.dumps, sort_keys=True, separators=(",", ":"), default=_json_dumps_fallback
+        json.dumps, sort_keys=True, separators=(",", ":"), default=json_dumps_fallback
     )
 
     # Because we want to use 'sorted_keys=True' we manually build
@@ -122,7 +122,7 @@ def json_dumps(value: Dict[str, Any]) -> str:
         return json_dumps(value)
 
 
-def _json_dumps_fallback(value: Any) -> Any:
+def json_dumps_fallback(value: Any) -> Any:
     """Fallback handler for json.dumps to handle objects json doesn't know how to
     serialize.
     """

@@ -32,6 +32,9 @@ class PIWebClient:
     def streams(self) -> Streams:
         """Returns a `Streams` consumer."""
         return self._get_consumer_instance(Streams)
+
+    async def close(self) -> None:
+        await self.session.close()
     
     def _get_consumer_instance(self, consumer: Type[Consumer]) -> Consumer:
         """Get an instance of the consumer for the a controller.

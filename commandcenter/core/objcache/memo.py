@@ -294,6 +294,7 @@ def make_cache_path() -> bool:
         return True
 
 
+# TODO: Implement a redis backend for the MemoAPI
 class MemoAPI:
     """Implements the public memo API: the `@memo` decorator, and `memo.clear()`."""
     F = TypeVar("F", bound=Callable[..., Any])
@@ -333,48 +334,44 @@ class MemoAPI:
         ... def fetch_and_clean_data(url):
         ...     # Fetch data from URL here, and then clean it up.
         ...     return data
-        ...
-        >>> d1 = fetch_and_clean_data(DATA_URL_1)
         >>> # Actually executes the function, since this is the first time it was
-        >>> # encountered.
-        >>>
-        >>> d2 = fetch_and_clean_data(DATA_URL_1)
+        ... # encountered.
+        ... d1 = fetch_and_clean_data(DATA_URL_1)
         >>> # Does not execute the function. Instead, returns its previously computed
-        >>> # value. This means that now the data in d1 is the same as in d2.
-        >>>
-        >>> d3 = fetch_and_clean_data(DATA_URL_2)
+        ... # value. This means that now the data in d1 is the same as in d2.
+        ... d2 = fetch_and_clean_data(DATA_URL_1)
         >>> # This is a different URL, so the function executes.
-        To set the `persist` parameter, use this command as follows:
-        >>> @memo(persist=True)
+        ... d3 = fetch_and_clean_data(DATA_URL_2)
+        >>> # To set the `persist` parameter, use this command as follows
+        ... @memo(persist=True)
         ... def fetch_and_clean_data(url):
         ...     # Fetch data from URL here, and then clean it up.
         ...     return data
-        By default, all parameters to a memoized function must be hashable.
-        Any parameter whose name begins with `_` will not be hashed. You can use
-        this as an "escape hatch" for parameters that are not hashable:
-        >>> @memo
+        >>> # By default, all parameters to a memoized function must be hashable.
+        ... # Any parameter whose name begins with `_` will not be hashed. You can use
+        ... # this as an "escape hatch" for parameters that are not hashable
+        ... @memo
         ... def fetch_and_clean_data(_db_connection, num_rows):
         ...     # Fetch data from _db_connection here, and then clean it up.
         ...     return data
-        ...
         >>> connection = make_database_connection()
-        >>> d1 = fetch_and_clean_data(connection, num_rows=10)
-        >>> # Actually executes the function, since this is the first time it was
-        >>> # encountered.
-        >>>
+        ... # Actually executes the function, since this is the first time it was
+        ... # encountered.
+        ... d1 = fetch_and_clean_data(connection, num_rows=10)
         >>> another_connection = make_database_connection()
-        >>> d2 = fetch_and_clean_data(another_connection, num_rows=10)
-        >>> # Does not execute the function. Instead, returns its previously computed
-        >>> # value - even though the _database_connection parameter was different
-        >>> # in both calls.
-        A memoized function's cache can be procedurally cleared:
-        >>> @memo
+        ... # Does not execute the function. Instead, returns its previously computed
+        ... # value - even though the _database_connection parameter was different
+        ... # in both calls.
+        ... d2 = fetch_and_clean_data(another_connection, num_rows=10)
+        >>> # A memoized function's cache can be procedurally cleared:
+        ... @memo
         ... def fetch_and_clean_data(_db_connection, num_rows):
         ...     # Fetch data from _db_connection here, and then clean it up.
         ...     return data
-        ...
-        >>> fetch_and_clean_data.clear()
-        >>> # Clear all cached entries for this function.
+        ... # Clears all cached entries for this function.
+        ... fetch_and_clean_data.clear()
+        >>> # You can clear also clear all cached entries
+        ... memo.clear()
         """
         if not make_cache_path() and persist:
             persist = False

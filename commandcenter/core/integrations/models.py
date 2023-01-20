@@ -1,14 +1,14 @@
 import hashlib
-from typing import List, Sequence, Set
+from typing import List, Optional, Sequence, Set
 
 import orjson
 from attrs import frozen, field
 from attrs.validators import deep_iterable, instance_of
 from pydantic import BaseModel, validator
 
-from commandcenter.core.sources import AvailableSources
 from commandcenter.core.integrations.util.common import json_loads
-
+from commandcenter.core.objcache import memo
+from commandcenter.core.sources import AvailableSources
 
 
 class BaseSubscription(BaseModel):
@@ -46,7 +46,7 @@ class BaseSubscription(BaseModel):
     
     def __ge__(self, __o: object) -> bool:
         if not isinstance(__o, BaseSubscription):
-            raise TypeError(f"'>' not supported between instances of {type(self)} and {type(__o)}")
+            raise TypeError(f"'>' not supported between instances of {type(self)} and {type(__o)}.")
         try:
             return hash(self) > hash(__o)
         except TypeError:
@@ -54,7 +54,7 @@ class BaseSubscription(BaseModel):
     
     def __lt__(self, __o: object) -> bool:
         if not isinstance(__o, BaseSubscription):
-            raise TypeError(f"'<' not supported between instances of {type(self)} and {type(__o)}")
+            raise TypeError(f"'<' not supported between instances of {type(self)} and {type(__o)}.")
         try:
             return hash(self) < hash(__o)
         except TypeError:
@@ -105,3 +105,18 @@ class SubscriptionRequest(BaseModel):
         """
         o = ''.join([str(hash(subscription)) for subscription in self.subscriptions]).encode()
         return int(hashlib.shake_128(o).hexdigest(16), 16)
+
+
+@memo
+def cache_subscription_request(
+    key: int,
+    _subscription_request: Optional[SubscriptionRequest] = None
+) -> None:
+    """This is bit of hack for situations where an actual caching server like
+    redis is not available. You can provide the key for a subscription request
+    along with the request itself then recall that request by just providing the
+    key. Only the key provided is used to calculate the cache key.
+
+    Redis is the correct answer here, but we work with what we got right?
+    """
+    return _subscription_request

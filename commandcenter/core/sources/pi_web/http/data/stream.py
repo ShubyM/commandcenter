@@ -4,6 +4,13 @@ from collections.abc import AsyncIterable
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Sequence, Union
 
+from commandcenter.core.integrations.types import JSONContent, TimeseriesRow
+from commandcenter.core.integrations.util import TIMEZONE
+from commandcenter.core.integrations.util.common import (
+    get_timestamp_index,
+    iter_rows,
+    in_timezone
+)
 from commandcenter.core.sources.pi_web.http.client import PIWebClient
 from commandcenter.core.sources.pi_web.http.data.util import (
     format_streams_content,
@@ -14,13 +21,6 @@ from commandcenter.core.sources.pi_web.http.data.util import (
 from commandcenter.core.sources.pi_web.models import (
     PIObjType,
     PISubscription
-)
-from commandcenter.core.integrations.types import JSONContent, TimeseriesRow
-from commandcenter.core.integrations.util import TIMEZONE
-from commandcenter.core.integrations.util.common import (
-    get_timestamp_index,
-    iter_rows,
-    in_timezone
 )
 
 
@@ -34,12 +34,11 @@ async def get_interpolated(
     request_chunk_size: int = 5000,
     timezone: str = TIMEZONE
 ) -> AsyncIterable[TimeseriesRow]:
-    """Stream timestamp aligned, interpolated data for a sequence of PI subscriptions
+    """Stream timestamp aligned, interpolated data for a sequence of PI subscriptions.
     
-    This iterable streams batch data for a sequence of subscriptions row by row. The
-    first row is an identifier row specifying the columns for each subsequent
-    row returned. Subsequent rows are unlabeled but the indices of the elements
-    align with the indices of header row.
+    The first row is the column labels which is the sorted hash of the subscriptions.
+    Subsequent rows are unlabeled but the indices of the elements align with
+    the indices of header row.
 
     Args:
         web_ids: The web_ids to stream data for
@@ -61,7 +60,7 @@ async def get_interpolated(
         ValueError:
             - If one of the subscriptions is not an allowed obj type. Must
                 be either 'point' or 'attribute'.
-            - If `start_time` >= `end_time`
+            - If `start_time` >= `end_time`.
         TypeError: If `interval` is an invalid type. 
         ClientError: Error in `aiohttp.ClientSession`.
     """
@@ -125,10 +124,9 @@ async def get_recorded(
 ) -> AsyncIterable[TimeseriesRow]:
     """Stream timestamp aligned, recorded data for a sequence of PI subscriptions.
     
-    This iterable streams batch data for a sequence of subscriptions row by row. The
-    first row is an identifier row specifying the columns for each subsequent
-    row returned. Subsequent rows are unlabeled but the indices of the elements
-    align with the indices of header row.
+    The first row is the column labels which is the sorted hash of the subscriptions.
+    Subsequent rows are unlabeled but the indices of the elements align with
+    the indices of header row.
 
     Args:
         client: The HTTP client instance executing the requests.

@@ -51,17 +51,10 @@ def inject_backend_dependencies(func) -> AbstractAuthenticationBackend:
         raise RuntimeError("Received invalid backend.")
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs) -> AbstractAuthenticationBackend:
-        return func(backend, client, **inject_kwargs)
-
-    @functools.wraps(func)
     async def async_wrapper(*args, **kwargs):
         return await func(backend, client, **inject_kwargs)
     
-    if inspect.iscoroutinefunction(func):
-        return async_wrapper
-    else:
-        return wrapper
+    return async_wrapper
 
 
 @inject_backend_dependencies

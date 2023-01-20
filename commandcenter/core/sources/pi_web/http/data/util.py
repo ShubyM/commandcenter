@@ -7,9 +7,9 @@ from typing import Dict, List, Optional, Tuple
 import orjson
 from aiohttp import ClientResponse, ClientResponseError
 
-from commandcenter.core.sources.pi_web.exceptions import ResponseError
 from commandcenter.core.integrations.types import JSONContent, JSONPrimitive
 from commandcenter.core.integrations.util.common import split_range
+from commandcenter.core.sources.pi_web.exceptions import PIWebResponseError
 
 
 
@@ -45,7 +45,7 @@ def split_interpolated_range(
     interval: timedelta,
     request_chunk_size: int = 5000
 ) -> Tuple[List[datetime], List[datetime]]:
-    """Split a time range into smaller ranges for interpolated requests"""
+    """Split a time range into smaller ranges for interpolated requests."""
     td: timedelta = end_time - start_time
     request_time_range = td.total_seconds()
     items_requested = math.ceil(
@@ -66,7 +66,7 @@ def split_recorded_range(
     request_chunk_size: int = 5000,
     scan_rate: float = 5
 ) -> Tuple[List[datetime], List[datetime]]:
-    """Split a time range into smaller ranges for recorded requests"""
+    """Split a time range into smaller ranges for recorded requests."""
     td: timedelta = end_time - start_time
     request_time_range = td.total_seconds()
     items_requested = math.ceil(request_time_range/scan_rate)
@@ -103,7 +103,7 @@ async def handle_request(
     
     if errors:
         if raise_for_error:
-            raise ResponseError(errors)
+            raise PIWebResponseError(errors)
         else:
             _LOGGER.warning(
                 "%i errors returned in response body",

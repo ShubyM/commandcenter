@@ -15,7 +15,9 @@ from commandcenter.core.logging.util import (
 
 
 class StandardFormatter(logging.Formatter):
-    """CommandCenter formatter for the `logging` module.
+    """Standard commandcenter formatter for the `logging` module.
+
+    This formatter is based on the ECS logging format.
     
     Args:
         stack_trace_limit: Specifies the maximum number of frames to include for

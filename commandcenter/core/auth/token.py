@@ -38,8 +38,11 @@ class TokenHandler(BaseModel):
 
     def get_username(self, token: str) -> Optional[str]:
         """Get the username of the JWT issued.
-        
-        If the token is invalid or expired this returns `None`
+
+        Args:
+            token: The JWT provided by the client.
+        Returns:
+            username: If the token is invalid or expired this returns `None`.
         """
         try:
             payload = jwt.decode(
@@ -58,7 +61,7 @@ class TokenHandler(BaseModel):
     def invalidate(self) -> None:
         """Invalidate all issued tokens by changing the secret key.
         
-        This allows an adminstrator to remotely invalidate all JWT's from an
+        This allows an adminstrator to remotely invalidate all JWT's via an
         API endpoint.
         """
         self.key._secret_value = secrets.token_hex(32)

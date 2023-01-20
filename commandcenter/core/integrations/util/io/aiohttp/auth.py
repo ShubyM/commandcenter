@@ -5,11 +5,12 @@ from aiohttp.connector import Connection
 
 
 class AuthFlow:
-    """Base auth flow implementation for `ClientSession`
+    """Base auth flow implementation for an `aiohttp.ClientSession`. This brings
+    HTTPX style auth flows to aiohttp.
     
-    Auth flows are used as part of custom req/rep handler classes for
-    `ClientSession`. Flows are async generator objects that yield requests and
-    receive back response objects. Implementations can manipulate headers, cookies,
+    Auth flows are used as part of custom req/rep handler classes for the
+    session. Flows are async generator objects that yield requests and receive
+    back response objects. Implementations can manipulate headers, cookies,
     etc before sending the next request.
     
     This framework allows for authentication schemes not natively supported in

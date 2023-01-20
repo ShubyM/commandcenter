@@ -10,7 +10,7 @@ from commandcenter.core.integrations.util.io.aiohttp import AuthFlow
 
 
 class FileCookieAuthFlow(AuthFlow):
-    """Auth flow for reading cookie authentication headers from TOML.
+    """Auth flow for reading cookie authentication headers from a TOML file.
     
     Args:
         path: The path to the .toml file

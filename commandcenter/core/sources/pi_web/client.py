@@ -19,13 +19,12 @@ from pendulum.tz.zoneinfo.exceptions import InvalidTimezone
 from pydantic import ValidationError
 
 from commandcenter.core.integrations.abc import AbstractClient, AbstractConnection
-from commandcenter.core.integrations.models import ErrorMessage
+from commandcenter.core.integrations.util import TIMEZONE
 from commandcenter.core.sources.pi_web.models import (
     PIMessage,
     PISubscription,
     WebIdType
 )
-from commandcenter.core.integrations.util import TIMEZONE
 
 
 
@@ -113,12 +112,13 @@ class PIChannelConnection(AbstractConnection):
                             data = PIMessage.parse_raw(msg.data)
                         except ValidationError:
                             _LOGGER.warning("Message validation failed", exc_info=True, extra={"raw": msg.data})
-                        except InvalidTimezone:
-                            raise
                         except Exception:
                             _LOGGER.error("An unhandled error occurred parsing the message", exc_info=True, extra={"raw": msg.data})
                         else:
-                            data.in_timezone(self.timezone)
+                            try:
+                                data.in_timezone(self.timezone)
+                            except InvalidTimezone:
+                                raise
                             await self.feeder.put(data.json())
                 else:
                     assert ws.closed
@@ -198,7 +198,7 @@ class PIChannelConnection(AbstractConnection):
 
 
 class PIChannelClient(AbstractClient):
-    """Client for streaming data from the PI Web API via websockets."""
+    """Client implementation for real-time data from the PI Web API."""
     def __init__(
         self,
         session: ClientSession,
@@ -220,10 +220,10 @@ class PIChannelClient(AbstractClient):
         super().__init__(max_buffered_messages)
         self.session = session
         self.web_id_type = web_id_type
-        self._max_capacity = max_connections * max_subscriptions
-        self._max_subscriptions = max_subscriptions
+        self.max_capacity = max_connections * max_subscriptions
+        self.max_subscriptions = max_subscriptions
         
-        self._connection_factory: Callable[[], PIChannelConnection] = functools.partial(
+        self.connection_factory: Callable[[], PIChannelConnection] = functools.partial(
             PIChannelConnection,
             self.connection_lost,
             web_id_type=web_id_type,
@@ -238,51 +238,30 @@ class PIChannelClient(AbstractClient):
             max_msg_size=max_msg_size,
             timezone=timezone
         )
-        self._consolidate_task: asyncio.Task = None
-        self._subscription_event: asyncio.Event = asyncio.Event()
-        self._subscription_lock: asyncio.Lock = asyncio.Lock()
+        self.consolidate_task: asyncio.Task = None
+        self.subscription_event: asyncio.Event = asyncio.Event()
+        self.subscription_lock: asyncio.Lock = asyncio.Lock()
     
     @property
     def capacity(self) -> int:
         """The number of additional PI tag subscriptions the client can support."""
-        return self._max_capacity - len(self.subscriptions)
+        return self.max_capacity - len(self.subscriptions)
 
     @property
     def closed(self) -> bool:
         """`True` if the underlying session is closed."""
         return self.session.closed
 
-    @property
-    def subscriptions(self) -> Set[str]:
-        """Return a set of all the PI tag subscriptions for the client."""
-        subscriptions = set()
-        for conn in self._connections:
-            subscriptions.update(conn.subscriptions)
-        return subscriptions
-
-    def connection_lost(self, connection: "PIChannelConnection") -> None:
-        """Callback for `PIChannelConnection` indicating the connection has been lost."""
-        exc = connection.exception
-        if exc is not None:
-            self._errors_queue.put_nowait(
-                ErrorMessage(
-                    exc=exc,
-                    subscriptions=connection.subscriptions
-                )
-            )
-        if connection in self._connections:
-            self._connections.remove(connection)
-
     async def close(self) -> None:
         """Cancel the consolidation task, stop all connection workers and close
         the unerlying session.
         """
-        task = self._consolidate_task
-        self._consolidate_task = None
+        task = self.consolidate_task
+        self.consolidate_task = None
         if task is not None:
             task.cancel()
-        for connection in self._connections: connection.stop()
-        self._connections.clear()
+        for connection in self.connections: connection.stop()
+        self.connections.clear()
         await self.session.close()
 
     async def subscribe(self, subscriptions: Sequence[PISubscription]) -> bool:
@@ -308,7 +287,7 @@ class PIChannelClient(AbstractClient):
         subscriptions: Set[PISubscription] = set(subscriptions)
         self._start_consolidation()
         
-        async with self._subscription_lock:
+        async with self.subscription_lock:
             existing = self.subscriptions
             capacity = self.capacity
             subscriptions = list(subscriptions.difference(existing))
@@ -319,8 +298,8 @@ class PIChannelClient(AbstractClient):
                 if not all([conn.running for conn in conns]):
                     return False
                 for conn in conns: conn.toggle()
-                self._connections.extend(conns)
-                self._subscription_event.set()
+                self.connections.extend(conns)
+                self.subscription_event.set()
                 _LOGGER.debug("Subscribed to %i subscriptions", count)
             
             elif subscriptions and capacity < count:
@@ -350,7 +329,7 @@ class PIChannelClient(AbstractClient):
         subscriptions: Set[PISubscription] = set(subscriptions)
         self._start_consolidation()
 
-        async with self._subscription_lock:
+        async with self.subscription_lock:
             existing = self.subscriptions
             dne = subscriptions.difference(existing)
             subscriptions = subscriptions.difference(dne)
@@ -360,7 +339,7 @@ class PIChannelClient(AbstractClient):
                 # connections
                 keep: List[PISubscription] = []
                 old: List[PIChannelConnection] = []
-                for connection in self._connections:
+                for connection in self.connections:
                     if len(connection.subscriptions.difference(subscriptions)) != len(connection.subscriptions):
                         old.append(connection)
                         keep.extend(connection.subscriptions.difference(subscriptions))
@@ -372,8 +351,8 @@ class PIChannelClient(AbstractClient):
                     return False
                 
                 self._transfer_connections(old, new)
-                self._connections.extend(new)
-                self._subscription_event.set()
+                self.connections.extend(new)
+                self.subscription_event.set()
                 _LOGGER.debug("Unsubscribed from %i subscriptions", len(subscriptions))
 
             return True
@@ -389,12 +368,12 @@ class PIChannelClient(AbstractClient):
         starters: List[Awaitable[None]] = []
         
         while True:
-            if len(subs) <= self._max_subscriptions: # This connection will cover the remaining
-                connection = self._connection_factory()
+            if len(subs) <= self.max_subscriptions: # This connection will cover the remaining
+                connection = self.connection_factory()
                 starters.append(
                     connection.start(
                         subs,
-                        self._data_queue,
+                        self.data_queue,
                         self.session
                     )
                 )
@@ -402,16 +381,16 @@ class PIChannelClient(AbstractClient):
                 break
             
             else: # More channels are required
-                connection = self._connection_factory()
+                connection = self.connection_factory()
                 starters.append(
                     connection.start(
-                        subs[:self._max_subscriptions],
-                        self._data_queue,
+                        subs[:self.max_subscriptions],
+                        self.data_queue,
                         self.session
                     )
                 )
                 connections.append(connection)
-                del subs[:self._max_subscriptions]
+                del subs[:self.max_subscriptions]
 
         errs: List[Union[None, BaseException]] = await asyncio.gather(
             *starters, return_exceptions=True
@@ -436,23 +415,24 @@ class PIChannelClient(AbstractClient):
 
         Each worker can support `max_subscriptions` subscriptions but the `subscribe`
         method only ever creates new connections. This can lead to multiple
-        workers not being at capacity. This task effectively merges subscriptions
-        of multiple connections into a smaller number of connections so that each
-        connection is supporting `max_subscriptions`. This is guarenteed to not lead
-        to a drop in subscriptions as the consolidation process will create new
-        workers and only stop the existing ones once all workers have properly
-        started.
+        workers not being at capacity.
+        
+        This task effectively merges subscriptions of multiple connections into
+        a smaller number of connections so that each connection is supporting
+        `max_subscriptions`. This is guarenteed to not lead to a drop in
+        subscriptions as the consolidation process will create new workers and
+        only stop the existing ones once all workers have properly started.
         """
         while True:
-            await self._subscription_event.wait()
+            await self.subscription_event.wait()
             await asyncio.sleep(5)
             
-            async with self._subscription_lock:
+            async with self.subscription_lock:
                 try:
                     _LOGGER.debug("Scanning connections for consolidation")
                     available = [
-                        connection for connection in self._connections
-                        if len(connection.subscriptions) < self._max_subscriptions
+                        connection for connection in self.connections
+                        if len(connection.subscriptions) < self.max_subscriptions
                     ]
                     capacity = sum(
                         [
@@ -460,7 +440,7 @@ class PIChannelClient(AbstractClient):
                             in available
                         ]
                     )
-                    ideal = math.ceil(capacity/self._max_subscriptions)
+                    ideal = math.ceil(capacity/self.max_subscriptions)
                     _LOGGER.debug("Ideal number of connections is %i. Total available is %i", ideal, len(available))
                     
                     if ideal == len(available):
@@ -471,23 +451,23 @@ class PIChannelClient(AbstractClient):
                         subs.extend(connection.subscriptions)
                     
                     new = await self._create_connections(subs)
-                    if not all([connection.is_running for connection in new]):
+                    if not all([connection.running for connection in new]):
                         _LOGGER.warning(
                             "Failed to consolidate channels. One or more new "
                             "channels failed to start"
                         )
                     else:
                         self._transfer_connections(available, new)
-                        self._connections.extend(new)
+                        self.connections.extend(new)
                         _LOGGER.debug("Consolidated %i connections", len(available)-len(new))
                 
                 finally:
-                    self._subscription_event.clear()
+                    self.subscription_event.clear()
 
     def _start_consolidation(self) -> None:
         """Start the consolidation task if it has not been started or ended unexpectedly."""
         if self._consolidate_task is None or self._consolidate_task.done():
-            task = self._loop.create_task(self._run_consolidation())
+            task = self.loop.create_task(self._run_consolidation())
             self._consolidate_task = task
 
     def _transfer_connections(
@@ -502,7 +482,7 @@ class PIChannelClient(AbstractClient):
         the client.
         """
         for stop, start in itertools.zip_longest(old, new):
-            assert stop in self._connections
+            assert stop in self.connections
             assert stop.online
             stop.toggle()
             stop.stop()

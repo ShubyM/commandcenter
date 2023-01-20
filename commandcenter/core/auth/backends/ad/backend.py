@@ -7,9 +7,7 @@ from starlette.authentication import AuthCredentials, AuthenticationError
 from starlette.requests import HTTPConnection
 
 from commandcenter.core.auth.abc import AbstractAuthenticationBackend
-from commandcenter.core.auth.backends.ad.client import ActiveDirectoryClient
 from commandcenter.core.auth.backends.ad.models import ActiveDirectoryUser
-from commandcenter.core.auth.token import TokenHandler
 
 
 
@@ -17,9 +15,9 @@ _LOGGER = logging.getLogger("commandcenter.core.auth.ad")
 
 
 class ActiveDirectoryBackend(AbstractAuthenticationBackend):
-    """Active Directory backend for starlette `AuthenticationMiddleware`
+    """Active Directory backend for starlette's `AuthenticationMiddleware`
     
-    This backend assumes a bearer token exists in the Authorization header. The
+    This backend assumes a bearer token exists in the authorization header. The
     token provides the username which is then queried against the active directory
     server.
     
@@ -27,10 +25,10 @@ class ActiveDirectoryBackend(AbstractAuthenticationBackend):
     is returned and downstream authorization at endpoints will fail. If we are
     unable to communicate with the AD server, an `AuthenticationError` is raised.
     """
-    def __init__(self, handler: TokenHandler, client: ActiveDirectoryClient) -> None:
-        super().__init__(handler, client)
-
-    async def authenticate(self, conn: HTTPConnection) -> Optional[Tuple[AuthCredentials, ActiveDirectoryUser]]:
+    async def authenticate(
+        self,
+        conn: HTTPConnection
+    ) -> Optional[Tuple[AuthCredentials, ActiveDirectoryUser]]:
         """Extract bearer token from authorization header and retrieve user entry
         from AD.
 
@@ -54,12 +52,15 @@ class ActiveDirectoryBackend(AbstractAuthenticationBackend):
                 user = await self.client.get_user(username)
             except LDAPError:
                 self.client.rotate()
-                _LOGGER.error("Unable to retrieve user information from active directory", exc_info=True)
+                _LOGGER.warning("Unable to get user information", exc_info=True)
                 continue
             except Exception as err:
-                _LOGGER.error("An unhandled error occurred during authentication", exc_info=True)
+                _LOGGER.error("An unhandled error occurred", exc_info=True)
                 raise AuthenticationError("An unhandled error occurred.") from err
             else:
                 return AuthCredentials(user.scopes), user
         else:
-            raise AuthenticationError("Unable to communicate with authentication backend.")
+            # All domain controller servers are unreachable
+            raise AuthenticationError(
+                "Unable to communicate with authentication backend."
+            )

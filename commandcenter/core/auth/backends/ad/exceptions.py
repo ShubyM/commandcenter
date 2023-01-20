@@ -12,4 +12,4 @@ class NoHostsFound(ActiveDirectoryError):
         self.domain = domain
 
     def __str__(self) -> str:
-        return "No hosts found for domain name {}".format(self.domain)
+        return "No hosts found for {}.".format(self.domain)

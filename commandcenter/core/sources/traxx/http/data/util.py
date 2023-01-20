@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 from aiohttp import ClientResponse, ClientResponseError
 
-from commandcenter.core.sources.traxx.exceptions import ExpiredSession
+from commandcenter.core.sources.traxx.exceptions import TraxxExpiredSession
 from commandcenter.core.integrations.types import JSONPrimitive
 
 
@@ -47,7 +47,7 @@ async def handle_request(
     if not content:
         return None
     elif b"<!DOCTYPE html>" in content:
-        raise ExpiredSession()
+        raise TraxxExpiredSession()
 
     buffer = io.StringIO(content.decode())
     return csv.reader(buffer)

@@ -6,7 +6,7 @@ class TraxxIntegrationError(IntegrationError):
     """Base exception for Traxx errors."""
 
 
-class ExpiredSession(TraxxIntegrationError):
+class TraxxExpiredSession(TraxxIntegrationError):
     """Raised when the session cookie is expired and we can no longer authenticate
     with the server.
     """

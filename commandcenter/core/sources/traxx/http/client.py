@@ -29,6 +29,9 @@ class TraxxClient:
     @property
     def sensors(self) -> Sensors:
         return self._get_consumer_instance(Sensors)
+
+    async def close(self) -> None:
+        await self.session.close()
     
     def _get_consumer_instance(self, consumer: Type[Consumer]) -> Consumer:
         """Get an instance of the consumer for the a controller.

@@ -31,10 +31,9 @@ async def get_sensor_data(
 ) -> AsyncIterable[TimeseriesRow]:
     """Stream timestamp aligned, recorded data for a sequence of Traxx subscriptions.
     
-    This iterable streams batch data for a sequence of subscriptions row by row. The
-    first row is an identifier row specifying the columns for each subsequent
-    row returned. Subsequent rows are unlabeled but the indices of the elements
-    align with the indices of header row.
+    The first row is the column labels which is the sorted hash of the subscriptions.
+    Subsequent rows are unlabeled but the indices of the elements align with
+    the indices of header row.
 
     Args:
         client: The HTTP client instance executing the requests.
@@ -49,10 +48,10 @@ async def get_sensor_data(
             the local system timezone.
 
     Yields:
-        List[JSONPrimitive]: The data for the row. The first row is always the
-            index row
+        row: A `TimeseriesRow`.
     
     Raises:
+        ValueError: If `start_time` >= `end_time`.
         TypeError: If `interval` is an invalid type.
         ClientError: Error in `aiohttp.ClientSession`.
     """
@@ -62,7 +61,7 @@ async def get_sensor_data(
 
     subscriptions = sorted(subscriptions)
     # The boundary on the start and end are inside boundaries so we add 15 minutes
-    # to each side of the start and end time to try and make sure we include
+    # to each side of the start and end time to *try* and make sure we include
     # those values (Traxx devices transmit data on 14 minute cycles normally)
     start_time_extend =  start_time - timedelta(minutes=15)
     end_time_extend = end_time + timedelta(minutes=15)
