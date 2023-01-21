@@ -1,7 +1,7 @@
 import secrets
 
 from starlette.config import Config
-from starlette.datastructures import CommaSeparatedStrings, Secret
+from starlette.datastructures import Secret
 
 from commandcenter.core.auth.backends import AvailableBackends
 
@@ -23,16 +23,6 @@ CC_AUTH_TOKEN_EXPIRE = config(
 CC_AUTH_ALGORITHM = config(
     "CC_AUTH_ALGORITHM",
     default="HS256"
-)
-CC_AUTH_ADMIN_SCOPES = config(
-    "CC_AUTH_ADMIN_SCOPES",
-    cast=CommaSeparatedStrings,
-    default=""
-)
-CC_AUTH_ADMIN_ALLOW_ANY = config(
-    "CC_AUTH_ADMIN_ALLOW_ANY",
-    cast=bool,
-    default=False
 )
 CC_AUTH_BACKEND = config(
     "CC_AUTH_BACKEND",

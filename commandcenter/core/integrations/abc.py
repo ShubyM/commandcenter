@@ -328,10 +328,10 @@ class AbstractManager(ABC):
 
     async def close(self) -> None:
         """Stop all subscribers and close the client."""
-        if not self._closed:
+        if not self.closed:
             for subscriber in self.subscribers: subscriber.stop()
             self.subscribers.clear()
-            self._closed = True
+            self.closed = True
             await self.client.close()
 
     @abstractmethod
@@ -358,6 +358,9 @@ class AbstractManager(ABC):
         if their subscriptions are still required.
         """
         raise NotImplementedError()
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}: Using {self.client.__class__.__name__} client and {self.subscriber.__name__} subscriber."
 
     def __del__(self):
         try:

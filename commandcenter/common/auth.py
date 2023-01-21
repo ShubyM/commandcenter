@@ -51,15 +51,15 @@ def inject_backend_dependencies(func) -> AbstractAuthenticationBackend:
         raise RuntimeError("Received invalid backend.")
 
     @functools.wraps(func)
-    async def async_wrapper(*args, **kwargs):
-        return await func(backend, client, **inject_kwargs)
+    def wrapper(*args, **kwargs):
+        return func(backend, client, **inject_kwargs)
     
-    return async_wrapper
+    return wrapper
 
 
 @inject_backend_dependencies
 @singleton
-async def setup_auth_backend(
+def setup_auth_backend(
     backend: Type[AbstractAuthenticationBackend],
     client: Type[AbstractAuthenticationClient],
     **kwargs
@@ -74,23 +74,27 @@ async def setup_auth_backend(
     return backend(handler, client)
 
 
-async def setup_auth_middleware() -> Callable[[ASGIApp], AuthenticationMiddleware]:
+def setup_auth_middleware(
+    middleware: AuthenticationMiddleware
+) -> Callable[[ASGIApp], AuthenticationMiddleware]:
     """Configure authentication middleware with backend from config."""
-    backend = await setup_auth_backend()
-    return functools.partial(
-        AuthenticationMiddleware,
+    backend = setup_auth_backend()
+    partial = functools.partial(
+        middleware,
         backend=backend,
         on_error=on_error
     )
+    partial.__name__ = AuthenticationMiddleware.__name__
+    return partial
 
 
 async def get_auth_client() -> AbstractAuthenticationClient:
     """Retrieve the auth client from the authentication backend."""
-    backend: AbstractAuthenticationBackend = await setup_auth_backend()
+    backend: AbstractAuthenticationBackend = setup_auth_backend()
     return backend.client
 
 
 async def get_token_handler() -> TokenHandler:
     """Retrieve the token handler from the authentication backend."""
-    backend: AbstractAuthenticationBackend = await setup_auth_backend()
+    backend: AbstractAuthenticationBackend = setup_auth_backend()
     return backend.handler

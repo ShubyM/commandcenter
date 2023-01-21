@@ -1,12 +1,14 @@
-from .core import Timeseries, TimeseriesCollection, TimeseriesCollectionView
+from .collection import TimeseriesCollection, TimeseriesCollectionView, timeseries_collection
+from .series import Timeseries
 from .exceptions import ChunkLimitError, OldTimestampError
 
 
 
 __all__ = [
-    "Timeseries",
     "TimeseriesCollection",
     "TimeseriesCollectionView",
+    "timeseries_collection",
+    "Timeseries",
     "ChunkLimitError",
-    "OldTimestampError"
+    "OldTimestampError",
 ]

@@ -1,3 +1,4 @@
+import inspect
 import logging
 import math
 import os
@@ -27,6 +28,21 @@ from commandcenter.__version__ import __title__ as DIR_NAME
 _LOGGER = logging.getLogger("commandcenter.core.objcache.memo")
 _CACHE_DIR = pathlib.Path("~").expanduser().joinpath(f".{DIR_NAME}/.objcache")
 _TTLCACHE_TIMER = time.monotonic
+
+
+def set_cache_dir(path: os.PathLike) -> None:
+    """Set the caching directory for persisted objects.
+    
+    This removes all caches in the previous directory if the new cache directory
+    is successfully created.
+    """
+    global _CACHE_DIR
+    old = _CACHE_DIR
+    _CACHE_DIR = path
+    if not make_cache_path():
+        raise RuntimeError("Unable to set cache directory.")
+    if os.path.isdir(old):
+        shutil.rmtree(old)
 
 
 class MemoizedFunction(CachedFunction):
@@ -383,35 +399,72 @@ class MemoAPI:
         else:
             ttl_seconds = ttl
 
-        def wrapper(f):
-            # We use wrapper function here instead of lambda function to be able to log
-            # warning in case both persist="disk" and ttl parameters specified
-            if persist and ttl is not None:
-                _LOGGER.warning(
-                    f"The memoized function '{f.__name__}' has a TTL that will be "
-                    f"ignored. Persistent memo caches currently don't support TTL."
-                )
-            return create_cache_wrapper(
-                MemoizedFunction(
-                    func=f,
-                    persist=persist,
-                    max_entries=max_entries,
-                    ttl=ttl_seconds
-                )
-            )
-
-        # Support passing the params via function decorator, e.g.
-        # @memo(persist=True)
         if func is None:
+            def decorator(f):
+                def wrapper(*args, **kwargs):
+                    if persist and ttl is not None:
+                        _LOGGER.warning(
+                            f"The memoized function '{f.__name__}' has a TTL that will be "
+                            f"ignored. Persistent memo caches currently don't support TTL."
+                        )
+                    wrapped = create_cache_wrapper(
+                        MemoizedFunction(
+                            func=f,
+                            persist=persist,
+                            max_entries=max_entries,
+                            ttl=ttl_seconds,
+                        )
+                    )
+                    return wrapped(*args, **kwargs)
+                
+                async def async_wrapper(*args, **kwargs):
+                    wrapped = create_cache_wrapper(
+                        MemoizedFunction(
+                            func=f,
+                            persist=persist,
+                            max_entries=max_entries,
+                            ttl=ttl_seconds,
+                        )
+                    )
+                    return await wrapped(*args, **kwargs)
+                
+                if inspect.iscoroutinefunction(func):
+                    return async_wrapper
+                return wrapper
+            
+            return decorator
+        
+        else:
+            def wrapper(*args, **kwargs):
+                if persist and ttl is not None:
+                    _LOGGER.warning(
+                        f"The memoized function '{func.__name__}' has a TTL that will be "
+                        f"ignored. Persistent memo caches currently don't support TTL."
+                    )
+                wrapped = create_cache_wrapper(
+                    MemoizedFunction(
+                        func=func,
+                        persist=persist,
+                        max_entries=max_entries,
+                        ttl=ttl_seconds,
+                    )
+                )
+                return wrapped(*args, **kwargs)
+            
+            async def async_wrapper(*args, **kwargs):
+                wrapped = create_cache_wrapper(
+                    MemoizedFunction(
+                        func=func,
+                        persist=persist,
+                        max_entries=max_entries,
+                        ttl=ttl_seconds,
+                    )
+                )
+                return await wrapped(*args, **kwargs)
+            
+            if inspect.iscoroutinefunction(func):
+                return async_wrapper
             return wrapper
-        return create_cache_wrapper(
-            MemoizedFunction(
-                func=func,
-                persist=persist,
-                max_entries=max_entries,
-                ttl=ttl_seconds,
-            )
-        )
 
     @staticmethod
     def clear() -> None:

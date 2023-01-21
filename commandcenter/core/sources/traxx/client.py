@@ -10,7 +10,6 @@ from aiohttp import ClientSession
 from pydantic import ValidationError
 
 from commandcenter.core.integrations.abc import AbstractClient, AbstractConnection
-from commandcenter.core.integrations.models import ErrorMessage
 from commandcenter.core.integrations.util import TIMEZONE
 from commandcenter.core.sources.traxx.exceptions import TraxxExpiredSession
 from commandcenter.core.sources.traxx.http.client import TraxxClient
@@ -56,7 +55,7 @@ class TraxxConnection(AbstractConnection):
 
     async def start(
         self,
-        subscriptions: Sequence[TraxxSubscription],
+        subscriptions: Set[TraxxSubscription],
         feeder: asyncio.Queue,
         client: TraxxClient
     ) -> None:
@@ -78,13 +77,11 @@ class TraxxConnection(AbstractConnection):
 
         while True:
             now = datetime.now()
-            if last_update is not None:
-                # ensure start is sufficiently far back that we get data most
-                # of the time
-                start_time = min(last_update, now-timedelta(minutes=2))
-            else:
-                # backfill 15 minutes of data
-                start_time = now-timedelta(minutes=15)
+            if last_update is None:
+                last_update = now - timedelta(minutes=15)
+            # ensure start is sufficiently far back that we get data most
+            # of the time
+            start_time = min(last_update, now-timedelta(minutes=2))
             begin = int(pendulum.instance(start_time, self.timezone).float_timestamp * 1000)
             end = int(pendulum.instance(now, self.timezone).float_timestamp * 1000)
             try:
@@ -121,6 +118,8 @@ class TraxxConnection(AbstractConnection):
                 await asyncio.sleep(backoff_delay)
                 attempts += 1
                 continue
+            else:
+                last_update = now
             
             sleeper = self.loop.create_task(
                 asyncio.sleep(self.update_interval + random.randint(-2000, 2000)/1000)
@@ -139,12 +138,14 @@ class TraxxConnection(AbstractConnection):
                     except ValidationError:
                         _LOGGER.warning("Message validation failed", exc_info=True, extra={"raw": items})
                     else:
-                        if last_timestamp is not None:
-                            data.filter(last_timestamp)
-                        if data.items:
+                        if last_timestamp is None:
                             last_timestamp = data.items[-1].timestamp
-                            data.in_timezone(self.timezone)
-                            await self.feeder.put(data.json())
+                        else:
+                            data.filter(last_timestamp)
+                            if data.items:
+                                last_timestamp = data.items[-1].timestamp
+                                data.in_timezone(self.timezone)
+                                await self.feeder.put(data.json())
             await sleeper
 
 
@@ -198,13 +199,11 @@ class TraxxStreamClient(AbstractClient):
                 that none of the subscriptions were subscribed to
         """
         subscriptions: Set[TraxxSubscription] = set(subscriptions)
-
         if self.capacity >= len(subscriptions):
             subscriptions = subscriptions.difference(self.subscriptions)
             connections = [self.connection_factory() for _ in range(len(subscriptions))]
             for subscription, connection in zip(subscriptions, connections):
-                # Connection cant fail to start
-                await connection.start(subscription, self.data_queue, self.client)
+                await connection.start({subscription}, self.data_queue, self.client)
                 connection.toggle()
             self.connections.extend(connections)
             return True

@@ -1,3 +1,4 @@
+import inspect
 import logging
 import threading
 import types
@@ -187,16 +188,50 @@ class SingletonAPI:
         ... singleton.clear()
         """
         if func is None:
-            return lambda f: create_cache_wrapper(
-                SingletonFunction(
-                    func=f,
+            def decorator(f):
+                def wrapper(*args, **kwargs):
+                    wrapped = create_cache_wrapper(
+                        SingletonFunction(
+                            func=cast(types.FunctionType, f)
+                        )
+                    )
+                    return wrapped(*args, **kwargs)
+                
+                async def async_wrapper(*args, **kwargs):
+                    wrapped = create_cache_wrapper(
+                        SingletonFunction(
+                            func=cast(types.FunctionType, f)
+                        )
+                    )
+                    return await wrapped(*args, **kwargs)
+                
+                if inspect.iscoroutinefunction(func):
+                    return async_wrapper
+                return wrapper
+            
+            return decorator
+        
+        else:
+            def wrapper(*args, **kwargs):
+                wrapped = create_cache_wrapper(
+                    SingletonFunction(
+                        func=cast(types.FunctionType, func)
+                    )
                 )
-            )
-        return create_cache_wrapper(
-            SingletonFunction(
-                func=cast(types.FunctionType, func)
-            )
-        )
+                return wrapped(*args, **kwargs)
+            
+            async def async_wrapper(*args, **kwargs):
+                wrapped = create_cache_wrapper(
+                    SingletonFunction(
+                        func=cast(types.FunctionType, func)
+                    )
+                )
+                return await wrapped(*args, **kwargs)
+            
+            if inspect.iscoroutinefunction(func):
+                return async_wrapper
+            return wrapper
+
 
     @staticmethod
     def clear() -> None:

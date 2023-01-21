@@ -38,7 +38,7 @@ class BaseManager(AbstractManager):
 
     def subscriber_lost(self, subscriber: AbstractSubscriber) -> None:
         """Callback for subscriber instances after their `stop` method was called."""
-        if not self._closed and not self._failed:
+        if not self.closed and not self.failed:
             assert subscriber in self.subscribers
             self.subscribers.remove(subscriber)
             self.subscription_event.set()

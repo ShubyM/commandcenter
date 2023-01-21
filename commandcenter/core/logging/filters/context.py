@@ -13,7 +13,7 @@ class IPAddressFilter(logging.Filter):
         ip_address = ip_address_context.get()
         if ip_address is not None:
             record.ip_address = ip_address
-        return super().filter(record)
+        return True
 
 
 class UserFilter(logging.Filter):
@@ -24,5 +24,5 @@ class UserFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         user = user_context.get()
         if user is not None:
-            record.username = user.identity
-        return super().filter(record)
+            record.username = user
+        return True

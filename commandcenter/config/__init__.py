@@ -24,5 +24,10 @@ CC_TIMEZONE = config(
     "CC_TIMEZONE",
     default=TIMEZONE
 )
+CC_OBJCACHE_DIR = config(
+    "CC_OBJCACHE_DIR",
+    cast=pathlib.Path,
+    default=CC_HOME.joinpath("./.objcache")
+)
 
 os.makedirs(CC_HOME, exist_ok=True)

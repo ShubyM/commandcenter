@@ -7,7 +7,7 @@ from commandcenter.exceptions import NotConfigured
 
 
 def resolve_pi_channel_client_dependencies(
-    manager: AbstractManager #TODO: Manager will be used when Redis and RabbitMQ integrations go in
+    manager: AbstractManager # TODO: Manager will be used when Redis and RabbitMQ integrations go in
 ) -> Tuple[Type[AbstractClient], Tuple[Any], Dict[str, Any], Dict[str, Any]]:
     """Return all objects for the manager to initialize and support a
     `PIChannelClient` instance.

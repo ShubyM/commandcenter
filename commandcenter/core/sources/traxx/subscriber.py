@@ -62,13 +62,13 @@ class TraxxSubscriber(AbstractSubscriber):
             while not stop.done():
                 if not self.data_queue:
                     waiter = self.loop.create_future()
-                    self._data_waiter = waiter
+                    self.data_waiter = waiter
 
                     await asyncio.wait([waiter, stop], return_when=asyncio.FIRST_COMPLETED)
                     if not waiter.done(): # `stop` called waiting for data
                         _LOGGER.debug("Subscriber stopped while waiting for data")
                         waiter.cancel()
-                        self._data_waiter = None
+                        self.data_waiter = None
                         break
 
                 # Pop messages from the data queue until there are no messages
@@ -79,8 +79,11 @@ class TraxxSubscriber(AbstractSubscriber):
                     except IndexError:
                         # Empty queue
                         break
-                    if f"{msg.sensor_id}-{msg.asset_id}" in self.sensors:
+                    key = f"{msg.sensor_id}-{msg.asset_id}"
+                    if key in self.sensors:
                         # The traxx messages are guarenteed to be in monotonically
                         # increasingly order so we dont need to sort or filter
                         # the data here
-                        yield msg
+                        yield msg.json()
+                    else:
+                        _LOGGER.debug("Message not published %s not in %s", key, ", ".join(self.sensors))

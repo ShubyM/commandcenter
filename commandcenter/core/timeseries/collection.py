@@ -308,3 +308,6 @@ class TimeseriesCollectionView(AsyncIterable[TimeseriesRow]):
     async def __aiter__(self) -> AsyncIterable[Tuple[datetime, List[Any]]]:
         async for timestamp, row in self.iter_range():
             yield timestamp, row
+
+
+timeseries_collection = TimeseriesCollection()

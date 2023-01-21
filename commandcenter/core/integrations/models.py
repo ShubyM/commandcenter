@@ -11,6 +11,7 @@ from commandcenter.core.objcache import memo
 from commandcenter.core.sources import AvailableSources
 
 
+
 class BaseSubscription(BaseModel):
     """Base model for all subscriptions.
     
@@ -87,31 +88,36 @@ class ErrorMessage:
         return "{} - {} subscriptions".format(self.exc.__class__.__name__, len(self.subscriptions))
 
 
+class SubscriptionKey(BaseModel):
+    """Subscription key model."""
+    key: str
+
 class SubscriptionRequest(BaseModel):
     """Base model for a sequence of subscriptions that a client registers with
     one or more integrations.
     """
-    subscriptions: Sequence[BaseSubscription]
+    subscriptions: Sequence["BaseSubscription"]
     
     @validator("subscriptions")
-    def _prepare_subscriptions(cls, subscriptions: Sequence[BaseSubscription]) -> List[BaseSubscription]:
+    def _prepare_subscriptions(cls, subscriptions: Sequence["BaseSubscription"]) -> List["BaseSubscription"]:
         subscriptions = list(set(subscriptions))
         return sorted(subscriptions)
 
     @property
-    def key(self) -> int:
+    def key(self) -> "SubscriptionKey":
         """A unique iddentification for this sequence of subscriptions. Keys are
         stable across runtimes.
         """
         o = ''.join([str(hash(subscription)) for subscription in self.subscriptions]).encode()
-        return int(hashlib.shake_128(o).hexdigest(16), 16)
+        key = int(hashlib.shake_128(o).hexdigest(16), 16)
+        return SubscriptionKey(key=str(key))
 
 
-@memo
+@memo(persist=True)
 def cache_subscription_request(
-    key: int,
-    _subscription_request: Optional[SubscriptionRequest] = None
-) -> None:
+    key: str,
+    _subscription_request: Optional["SubscriptionRequest"] = None
+) -> "SubscriptionRequest":
     """This is bit of hack for situations where an actual caching server like
     redis is not available. You can provide the key for a subscription request
     along with the request itself then recall that request by just providing the
@@ -119,4 +125,6 @@ def cache_subscription_request(
 
     Redis is the correct answer here, but we work with what we got right?
     """
+    if not _subscription_request:
+        raise ValueError()
     return _subscription_request

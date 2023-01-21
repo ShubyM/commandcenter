@@ -91,7 +91,7 @@ class requires:
             if self.raise_on_no_scopes:
                 raise NotConfigured("No scopes specified for this endpoint.")
             return
-        scopes = request.auth.scopes
+        scopes = request.auth
         if self.any and any([permission in scopes for permission in self.scopes]):
             return
         elif all([permission in scopes for permission in self.scopes]):

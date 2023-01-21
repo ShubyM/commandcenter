@@ -47,15 +47,17 @@ def inject_manager_dependencies(func) -> AbstractManager:
 
 @inject_manager_dependencies
 @singleton
-async def get_manager(
+async def setup_manager(
     manager: Type[AbstractManager],
     source: str,
     **kwargs
 ) -> AbstractManager:
-    """Initialize manager from the environment configuration.
-    
-    This can also be used as a dependency.
-    """
+    """Initialize manager from the environment configuration."""
     client, subscriber, add_kwargs = build_client_for_manager(source, manager)
     kwargs.update(**add_kwargs)
     return manager(client, subscriber, **kwargs)
+
+
+async def get_manager() -> AbstractManager:
+    """Dependency for getting the manager based on source context."""
+    return await setup_manager()

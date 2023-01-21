@@ -107,7 +107,7 @@ class PIChannelConnection(AbstractConnection):
                     # The client will put the connection `online` when it is ready
                     # to receive messages from it. Otherwise we just throw away
                     # the message
-                    if self._online:
+                    if self.online:
                         try:
                             data = PIMessage.parse_raw(msg.data)
                         except ValidationError:
@@ -466,9 +466,9 @@ class PIChannelClient(AbstractClient):
 
     def _start_consolidation(self) -> None:
         """Start the consolidation task if it has not been started or ended unexpectedly."""
-        if self._consolidate_task is None or self._consolidate_task.done():
+        if self.consolidate_task is None or self.consolidate_task.done():
             task = self.loop.create_task(self._run_consolidation())
-            self._consolidate_task = task
+            self.consolidate_task = task
 
     def _transfer_connections(
         self,

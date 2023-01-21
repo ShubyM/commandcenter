@@ -33,7 +33,7 @@ class UserMiddleware(BaseHTTPMiddleware):
         """Assign the user value from `request.user` to the context variable."""
         user = request.user
         if user.is_authenticated:
-            token = user_context.set(user)
+            token = user_context.set(user.identity)
             try:
                 return await call_next(request)
             finally:

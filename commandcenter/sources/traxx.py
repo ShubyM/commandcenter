@@ -8,7 +8,7 @@ from commandcenter.exceptions import NotConfigured
 
 
 def resolve_traxx_stream_client_dependencies(
-    manager: AbstractManager #TODO: Manager will be used when Redis and RabbitMQ integrations go in
+    manager: AbstractManager # TODO: Manager will be used when Redis and RabbitMQ integrations go in
 ) -> Tuple[Type[AbstractClient], Tuple[Any], Dict[str, Any], Dict[str, Any]]:
     """Return all objects for the manager to initialize and support a
     `TraxxStreamClient` instance.
@@ -34,8 +34,11 @@ def resolve_traxx_stream_client_dependencies(
 
     if not CC_SOURCES_TRAXX_HTTP_BASE_URL:
         raise NotConfigured("Traxx stream settings not configured.")
-    
-    flow = FileCookieAuthFlow(CC_SOURCES_TRAXX_AUTH_FILEPATH)
+    try:
+        flow = FileCookieAuthFlow(CC_SOURCES_TRAXX_AUTH_FILEPATH)
+    except FileNotFoundError as err:
+        raise NotConfigured("Traxx stream settings not configured.") from err
+
     request_class, response_class = create_auth_handlers(flow)
     session = ClientSession(
         base_url=CC_SOURCES_TRAXX_HTTP_BASE_URL,
@@ -50,7 +53,6 @@ def resolve_traxx_stream_client_dependencies(
     
     args = (session,)
     kwargs = {
-        "session": session,
         "max_subscriptions": CC_SOURCES_TRAXX_STREAM_MAX_SUBSCRIPTIONS,
         "max_buffered_messages": CC_SOURCES_TRAXX_STREAM_MAX_BUFFERED_MESSAGES,
         "update_interval": CC_SOURCES_TRAXX_STREAM_UPDATE_INTERVAL,
@@ -83,7 +85,7 @@ async def get_traxx_http_client():
     from commandcenter.core.sources.traxx.http import TraxxClient
 
     if not CC_SOURCES_TRAXX_HTTP_BASE_URL:
-        raise NotConfigured("Traxx stream settings not configured.")
+        raise NotConfigured("Traxx client settings not configured.")
     
     flow = FileCookieAuthFlow(CC_SOURCES_TRAXX_AUTH_FILEPATH)
     request_class, response_class = create_auth_handlers(flow)

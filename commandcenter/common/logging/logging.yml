@@ -12,28 +12,25 @@ formatters:
         datefmt: "%H:%M:%S"
 
     standard:
-        (): commandcenter.logging.formatters.formatters.StandardFormatter
+        (): commandcenter.core.logging.formatters.StandardFormatter
 
 
 filters:
     correlation_id:
-        class: asgi_correlation_id.CorrelationIdFilter
+        (): asgi_correlation_id.CorrelationIdFilter
         uuid_length: 32
     ip_address:
-        class: commandcenter.core.logging.filters.context.IPAddressFilter
+        (): commandcenter.core.logging.filters.context.IPAddressFilter
     username:
-        class: commandcenter.core.logging.filters.context.UserFilter
+        (): commandcenter.core.logging.filters.context.UserFilter
 
 handlers:
-    # The handlers we define here will output all logs they receieve by default
-    # but we include the `level` so it can be overridden by environment
+    
     console:
-        level: 0
-        class: logging.handlers.StreamHandler
+        class: logging.StreamHandler
         formatter: simple
 
     rotate:
-        level: 0
         class: logging.handlers.TimedRotatingFileHandler
         filename: commandcenter.log
         when: midnight
@@ -44,19 +41,9 @@ handlers:
 loggers:
     commandcenter.core:
         level: INFO
-        handlers: [rotate]
 
-    commandcenter.core.integrations:
-        level: WARNING
-        handlers: [rotate]
-
-    commandcenter.core.comm:
-        level: WARNING
-        handlers: [rotate]
-
-    commandcenter.core.objcache:
-        level: WARNING
-        handlers: [rotate]
+    commandcenter.services:
+        level: INFO
 
     uvicorn:
         level: INFO

@@ -42,8 +42,13 @@ class LocalTimeseriesCollection(AbstractTimeseriesCollection):
         # a network connection so we break the range into sub-ranges so we can
         # chunk the data and send it. While being sent, data waiting to be added
         # can be added.
+        last_timestamp = None
         start_times, end_times = split_range(start, end, timedelta(minutes=15))
         for start_time, end_time in zip(start_times, end_times):
             view = self.collection.filter_by_subscription(self.subscriptions)
-            async for timestamp, row in view.iter_range(start_time, end_time, boundary="chunked"):
+            async for i, (timestamp, row) in enumerate(view.iter_range(start_time, end_time)):
+                if i == 0 and last_timestamp is not None and last_timestamp >= timestamp:
+                    continue
                 yield timestamp, row
+            else:
+                last_timestamp = timestamp
