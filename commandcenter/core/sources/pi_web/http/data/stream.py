@@ -2,9 +2,13 @@ import asyncio
 import datetime
 from collections.abc import AsyncIterable
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
-from commandcenter.core.integrations.types import JSONContent, TimeseriesRow
+from commandcenter.core.integrations.types import (
+    JSONContent,
+    JSONPrimitive,
+    TimeseriesRow
+)
 from commandcenter.core.integrations.util import TIMEZONE
 from commandcenter.core.integrations.util.common import (
     get_timestamp_index,
@@ -153,22 +157,6 @@ async def get_recorded(
             - If `start_time` >= `end_time`
         ClientError: Error in `aiohttp.ClientSession`.
     """
-    def parse_recorded_at_time_row(timestamp: datetime, data: List[Dict[str, JSONContent]]) -> TimeseriesRow:
-        row = []
-        for item in data:
-            if not item:
-                row.append(None)
-                continue
-            if item["Good"]:
-                value = item["Value"]
-                if isinstance(value, dict):
-                    row.append(value["Name"])
-                else:
-                    row.append(value)
-            else:
-                row.append(None)
-        return timestamp, row
-
     allowed = (PIObjType.ATTRIBUTE, PIObjType.POINT)
     if not all([subscription.obj_type not in allowed for subscription in subscriptions]):
         raise ValueError(f"All obj types for subscriptions must one {', '.join(allowed)}")
@@ -189,8 +177,76 @@ async def get_recorded(
     
     yield [hash(subscription) for subscription in subscriptions]
 
-    # We want to guarentee that the first and last rows of data are the requested
-    # start time and end time respectively so we get the recorded value at the times
+    for i, (start_time, end_time) in enumerate(zip(start_times, end_times)):
+        first_row, last_row = await _get_recorded_at_times(
+            client,
+            web_ids,
+            start_time,
+            end_time
+        )
+
+        yield start_time, first_row
+        
+        dispatch = [
+            handle_request(
+                client.streams.get_recorded(
+                    web_id,
+                    startTime=start_time,
+                    endTime=end_time,
+                    timeZone="UTC",
+                    selectedFields="Items.Timestamp;Items.Value;Items.Good"
+                ),
+                raise_for_status=False
+            ) for web_id in web_ids
+        ]
+        
+        contents = await asyncio.gather(*dispatch)
+        data = [format_streams_content(content) for content in contents]
+        index = get_timestamp_index(data)
+
+        l = len(start_times)-1
+        m = len(index)-1
+        for j, (timestamp, row) in enumerate(iter_rows(index, data)):
+            if i == 0 and j == 0:
+                if timestamp == start_time:
+                    continue
+                yield timestamp, row
+            elif i == l and j == m:
+                if timestamp == end_time:
+                    continue
+                yield timestamp, row
+            else:
+                yield timestamp, row
+        else:
+            yield end_time, last_row
+
+
+async def _get_recorded_at_times(
+    client: PIWebClient,
+    web_ids: List[str],
+    start_time: datetime,
+    end_time: Optional[datetime]
+) -> Tuple[List[JSONPrimitive], List[JSONPrimitive]]:
+    """Returns the first and last rows of a recorded batch."""
+    def parse_recorded_at_time_row(
+        timestamp: datetime,
+        data: List[Dict[str, JSONContent]]
+    ) -> TimeseriesRow:
+        row = []
+        for item in data:
+            if not item:
+                row.append(None)
+                continue
+            if item["Good"]:
+                value = item["Value"]
+                if isinstance(value, dict):
+                    row.append(value["Name"])
+                else:
+                    row.append(value)
+            else:
+                row.append(None)
+        return timestamp, row
+
     first, last = (
         [
             handle_request(
@@ -216,34 +272,7 @@ async def get_recorded(
         ]
     )
     data = await asyncio.gather(*first)
-    first_timestamp, first_row = parse_recorded_at_time_row(start_time, data)
+    _, first_row = parse_recorded_at_time_row(start_time, data)
     data = await asyncio.gather(*last)
-    last_timestamp, last_row = parse_recorded_at_time_row(end_time, data)
-    
-    for i, (start_time, end_time) in enumerate(zip(start_times, end_times)):
-        dispatch = [
-            handle_request(
-                client.streams.get_recorded(
-                    web_id,
-                    startTime=start_time,
-                    endTime=end_time,
-                    timeZone="UTC",
-                    selectedFields="Items.Timestamp;Items.Value;Items.Good"
-                ),
-                raise_for_status=False
-            ) for web_id in web_ids
-        ]
-        
-        contents = await asyncio.gather(*dispatch)
-        data = [format_streams_content(content) for content in contents]
-        index = get_timestamp_index(data)
-
-        l = len(start_times)-1
-        m = len(index)-1
-        for j, (timestamp, row) in enumerate(iter_rows(index, data)):
-            if i == 0 and j == 0:
-                yield first_timestamp, first_row
-            elif i == l and j == m:
-                yield last_timestamp, last_row
-            else:
-                yield timestamp, row
+    _, last_row = parse_recorded_at_time_row(end_time, data)
+    return first_row, last_row

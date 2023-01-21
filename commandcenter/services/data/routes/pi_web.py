@@ -1,5 +1,3 @@
-import asyncio
-import concurrent.futures
 from typing import List
 
 from fastapi import APIRouter, Depends
@@ -14,16 +12,22 @@ from commandcenter.config.scopes import (
 from commandcenter.core.integrations.abc import AbstractManager
 from commandcenter.core.integrations.models import (
     SubscriptionKey,
-    SubscriptionRequest,
-    cache_subscription_request
+    SubscriptionRequest
 )
 from commandcenter.core.sources import AvailableSources
-from commandcenter.core.sources.pi_web import PISubscription, PISubscriberMessage
-from commandcenter.core.util.context import run_in_threadpool_executor_with_context
+from commandcenter.core.sources.pi_web import (
+    PISubscription,
+    PISubscriberMessage,
+    get_interpolated,
+    get_recorded,
+    search_points
+)
 from commandcenter.dependencies import (
     SourceContext,
     get_cached_subscription_request,
     get_manager,
+    get_pi_http_client,
+    get_subscription_key,
     requires
 )
 
@@ -51,16 +55,8 @@ class PISubscriptionRequest(SubscriptionRequest):
 
 
 @router.post("/subscribe", response_model=SubscriptionKey)
-async def subscribe(subscriptions: PISubscriptionRequest) -> SubscriptionKey:
+async def subscribe(key: SubscriptionKey = Depends(get_subscription_key)) -> SubscriptionKey:
     """Generate a subscription key to stream PI data."""
-    key = subscriptions.key
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        await run_in_threadpool_executor_with_context(
-            executor,
-            cache_subscription_request,
-            key.key,
-            subscriptions
-        )
     return key
 
 
@@ -69,6 +65,15 @@ async def stream(
     subscriptions: PISubscriptionRequest = Depends(get_cached_subscription_request),
     manager: AbstractManager = Depends(get_manager)
 ) -> PISubscriberMessage:
-    """Stream PI data for a subscription key. This is an event sourcing (SSE) endpoint."""
+    """Submit a subscription key to stream PI data. This is an event sourcing
+    (SSE) endpoint.
+    """
     iterator = subscriber_event_generator(manager, subscriptions.subscriptions)
     return EventSourceResponse(iterator)
+
+
+@router.post("/search")
+async def search(
+    t
+):
+    pass

@@ -1,5 +1,3 @@
-import asyncio
-import concurrent.futures
 from typing import List
 
 from fastapi import APIRouter, Depends
@@ -15,15 +13,14 @@ from commandcenter.core.integrations.abc import AbstractManager
 from commandcenter.core.integrations.models import (
     SubscriptionKey,
     SubscriptionRequest,
-    cache_subscription_request
 )
 from commandcenter.core.sources import AvailableSources
 from commandcenter.core.sources.traxx import TraxxSubscription, TraxxSubscriberMessage
-from commandcenter.core.util.context import run_in_threadpool_executor_with_context
 from commandcenter.dependencies import (
     SourceContext,
     get_cached_subscription_request,
     get_manager,
+    get_subscription_key,
     requires
 )
 
@@ -51,16 +48,8 @@ class TraxxSubscriptionRequest(SubscriptionRequest):
 
 
 @router.post("/subscribe", response_model=SubscriptionKey)
-async def subscribe(subscriptions: TraxxSubscriptionRequest) -> SubscriptionKey:
+async def subscribe(key: SubscriptionKey = Depends(get_subscription_key)) -> SubscriptionKey:
     """Generate a subscription key to stream Traxx data."""
-    key = subscriptions.key
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        await run_in_threadpool_executor_with_context(
-            executor,
-            cache_subscription_request,
-            key.key,
-            subscriptions
-        )
     return key
 
 
