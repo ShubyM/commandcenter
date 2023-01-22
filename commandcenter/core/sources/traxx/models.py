@@ -6,7 +6,10 @@ import orjson
 from pendulum.datetime import DateTime
 from pydantic import BaseModel, validator
 
-from commandcenter.core.integrations.models import BaseSubscription
+from commandcenter.core.integrations.models import (
+    BaseSubscription,
+    BaseSubscriptionRequest
+)
 from commandcenter.core.sources import AvailableSources
 from commandcenter.core.integrations.util.common import (
     in_timezone,
@@ -35,6 +38,11 @@ class TraxxSubscription(BaseSubscription):
     def key(self) -> str:
         """Unique id for subscription."""
         return f"{self.sensor_id}-{self.asset_id}"
+
+
+class TraxxSubscriptionRequest(BaseSubscriptionRequest):
+    """Model for PI Web subscription requests."""
+    subscriptions: List[TraxxSubscription]
 
 
 class BaseTraxxSensorMessage(BaseModel):

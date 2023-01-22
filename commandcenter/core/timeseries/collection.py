@@ -27,6 +27,20 @@ T = TypeVar("T")
 _LOGGER = logging.getLogger("commandcenter.core.timeseries")
 
 
+class Flush(object):
+    """A distinct object that signals a chunk of data should be sent over the
+    wire.
+
+    In most cases, it is okay to let a chunk generator control the number of rows
+    it sends at once but in the case of the timeseries API we probably want to
+    send rows sooner than a standard chunk generator would. Yielding this will
+    flush a chunk generator to send its payload.
+
+    Iterables must yield a flush tuple with the first element being a Flush
+    (ie. (Flush, [None]))
+    """
+
+
 class TimeseriesCollection:
     """A timeseries collection is an indexed container of timeseries objects.
     

@@ -1,3 +1,5 @@
+import asyncio
+import functools
 import inspect
 import logging
 import math
@@ -310,10 +312,52 @@ def make_cache_path() -> bool:
         return True
 
 
+def call_sync(
+    func:Callable[[Any], Any],
+    lock: threading.Lock,
+    persist: bool,
+    max_entries: int,
+    ttl_seconds: Optional[float],
+    *args: Any,
+    **kwargs: Any
+) -> Any:
+    with lock:
+        wrapped = create_cache_wrapper(
+            MemoizedFunction(
+                func=func,
+                persist=persist,
+                max_entries=max_entries,
+                ttl=ttl_seconds,
+            )
+        )
+        return wrapped(*args, **kwargs)
+
+async def call_async(
+    func:Callable[[Any], Any],
+    lock: asyncio.Lock,
+    persist: bool,
+    max_entries: int,
+    ttl_seconds: Optional[float],
+    *args: Any,
+    **kwargs: Any
+) -> Any:
+    async with lock:
+        wrapped = create_cache_wrapper(
+            MemoizedFunction(
+                func=func,
+                persist=persist,
+                max_entries=max_entries,
+                ttl=ttl_seconds,
+            )
+        )
+        return await wrapped(*args, **kwargs)
+
 # TODO: Implement a redis backend for the MemoAPI
 class MemoAPI:
     """Implements the public memo API: the `@memo` decorator, and `memo.clear()`."""
     F = TypeVar("F", bound=Callable[..., Any])
+    t_lock: threading.Lock = threading.Lock()
+    a_lock: asyncio.Lock = asyncio.Lock()
 
     def __call__(
         self,
@@ -398,73 +442,59 @@ class MemoAPI:
             ttl_seconds = ttl.total_seconds()
         else:
             ttl_seconds = ttl
+        
+        if func is not None and persist and ttl:
+            _LOGGER.warning(
+                f"The memoized function '{func.__name__}' has a TTL that will be "
+                f"ignored. Persistent memo caches currently don't support TTL."
+            )
 
         if func is None:
             def decorator(f):
-                def wrapper(*args, **kwargs):
-                    if persist and ttl is not None:
-                        _LOGGER.warning(
-                            f"The memoized function '{f.__name__}' has a TTL that will be "
-                            f"ignored. Persistent memo caches currently don't support TTL."
-                        )
-                    wrapped = create_cache_wrapper(
-                        MemoizedFunction(
-                            func=f,
-                            persist=persist,
-                            max_entries=max_entries,
-                            ttl=ttl_seconds,
-                        )
+                if persist and ttl is not None:
+                    _LOGGER.warning(
+                        f"The memoized function '{f.__name__}' has a TTL that will be "
+                        "ignored. Persistent memo caches currently don't support TTL."
                     )
-                    return wrapped(*args, **kwargs)
-                
-                async def async_wrapper(*args, **kwargs):
-                    wrapped = create_cache_wrapper(
-                        MemoizedFunction(
-                            func=f,
-                            persist=persist,
-                            max_entries=max_entries,
-                            ttl=ttl_seconds,
-                        )
-                    )
-                    return await wrapped(*args, **kwargs)
                 
                 if inspect.iscoroutinefunction(func):
-                    return async_wrapper
-                return wrapper
+                    return functools.partial(
+                        call_async,
+                        f,
+                        self.a_lock,
+                        persist,
+                        max_entries,
+                        ttl_seconds
+                    )
+                return functools.partial(
+                        call_sync,
+                        f,
+                        self.t_lock,
+                        persist,
+                        max_entries,
+                        ttl_seconds
+                    )
             
             return decorator
         
         else:
-            def wrapper(*args, **kwargs):
-                if persist and ttl is not None:
-                    _LOGGER.warning(
-                        f"The memoized function '{func.__name__}' has a TTL that will be "
-                        f"ignored. Persistent memo caches currently don't support TTL."
-                    )
-                wrapped = create_cache_wrapper(
-                    MemoizedFunction(
-                        func=func,
-                        persist=persist,
-                        max_entries=max_entries,
-                        ttl=ttl_seconds,
-                    )
-                )
-                return wrapped(*args, **kwargs)
-            
-            async def async_wrapper(*args, **kwargs):
-                wrapped = create_cache_wrapper(
-                    MemoizedFunction(
-                        func=func,
-                        persist=persist,
-                        max_entries=max_entries,
-                        ttl=ttl_seconds,
-                    )
-                )
-                return await wrapped(*args, **kwargs)
-            
             if inspect.iscoroutinefunction(func):
-                return async_wrapper
-            return wrapper
+                return functools.partial(
+                    call_async,
+                    func,
+                    self.a_lock,
+                    persist,
+                    max_entries,
+                    ttl_seconds
+                )
+            return functools.partial(
+                call_sync,
+                func,
+                self.t_lock,
+                persist,
+                max_entries,
+                ttl_seconds
+            )
 
     @staticmethod
     def clear() -> None:

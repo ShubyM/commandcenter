@@ -1,7 +1,6 @@
 import itertools
 from typing import List
 
-from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.authentication import AuthenticationMiddleware
@@ -20,7 +19,11 @@ from commandcenter.config.scopes import (
     CC_SCOPES_TRAXX_ACCESS
 )
 from commandcenter.core.auth import BaseUser
-from commandcenter.core.middleware.context import IPAddressMiddleware, UserMiddleware
+from commandcenter.core.middleware import (
+    CorrelationIDMiddlewareMod,
+    IPAddressMiddleware,
+    UserMiddleware
+)
 
 
 
@@ -63,7 +66,6 @@ class DebugAuthMiddleware(AuthenticationMiddleware):
         if scope["type"] not in ["http", "websocket"]:
             await self.app(scope, receive, send)
             return
-        
         scope["auth"], scope["user"] = DEBUG_USER.scopes, DEBUG_USER
         await self.app(scope, receive, send)
 
@@ -78,7 +80,7 @@ def setup_middleware() -> List[Middleware]:
     if CC_MIDDLEWARE_ENABLE_CONTEXT:
         middleware.insert(0, Middleware(UserMiddleware))
         middleware.insert(0, Middleware(IPAddressMiddleware))
-        middleware.insert(0, Middleware(CorrelationIdMiddleware))
+        middleware.insert(0, Middleware(CorrelationIDMiddlewareMod))
         
     if CC_DEBUG_MODE:
         auth_middleware = setup_auth_middleware(DebugAuthMiddleware)

@@ -43,8 +43,8 @@ class PISubscriber(AbstractSubscriber):
 
         self.data_queue.append(data)
         
-        waiter = self._data_waiter
-        self._data_waiter = None
+        waiter = self.data_waiter
+        self.data_waiter = None
         if waiter is not None and not waiter.done():
             waiter.set_result(None)
 
@@ -67,13 +67,13 @@ class PISubscriber(AbstractSubscriber):
             while not stop.done():
                 if not self.data_queue:
                     waiter = self.loop.create_future()
-                    self._data_waiter = waiter
+                    self.data_waiter = waiter
 
                     await asyncio.wait([waiter, stop], return_when=asyncio.FIRST_COMPLETED)
                     if not waiter.done(): # `stop` called waiting for data
                         _LOGGER.debug("Subscriber stopped while waiting for data")
                         waiter.cancel()
-                        self._data_waiter = None
+                        self.data_waiter = None
                         break
 
                 # Pop messages from the data queue until there are no messages

@@ -66,7 +66,7 @@ def resolve_traxx_stream_client_dependencies(
 
 
 @singleton
-async def get_traxx_http_client():
+async def build_traxx_http_client():
     """Initialize PI Web API HTTP client from the environment configuration.
     
     This can also be used as a dependency.
@@ -101,3 +101,8 @@ async def get_traxx_http_client():
     )
 
     return TraxxClient(session)
+
+
+async def get_traxx_http_client():
+    """Dependency for building an PI Web HTTP client."""
+    return await build_traxx_http_client()

@@ -14,7 +14,7 @@ class SubscriptionError(IntegrationError):
     """
 
 
-class SubscriptionLimitError(IntegrationError):
+class SubscriptionLimitError(SubscriptionError):
     """Raised when attempting to subscribe to a manager with the maximum number
     of active subscribers.
     """
@@ -25,7 +25,7 @@ class SubscriptionLimitError(IntegrationError):
         return "Subscription limit reached ({}).".format(self.max_subscribers)
 
 
-class ClientSubscriptionError(IntegrationError):
+class ClientSubscriptionError(SubscriptionError):
     """Raised when attempting to subscribe to a manager and the client was
     unable to subscribe to one or more subscriptions due to an unhandled exception.
     """
@@ -45,3 +45,7 @@ class FailedManager(IntegrationError):
 
     def __str__(self) -> str:
         return "Unable to subscribe due to {} error(s) in manager.".format(len(self.exc))
+
+
+class DroppedSubscriber(IntegrationError):
+    """Can be raised when a subscriber has been stopped on the manager side."""

@@ -5,7 +5,7 @@ from commandcenter.core.integrations.abc import AbstractTimeseriesCollection
 from commandcenter.core.integrations.models import BaseSubscription
 from commandcenter.core.integrations.types import TimeseriesRow
 from commandcenter.core.integrations.util.common import split_range
-from commandcenter.core.timeseries.collection import TimeseriesCollection
+from commandcenter.core.timeseries.collection import Flush, TimeseriesCollection
 
 
 
@@ -52,3 +52,4 @@ class LocalTimeseriesCollection(AbstractTimeseriesCollection):
                 yield timestamp, row
             else:
                 last_timestamp = timestamp
+                yield Flush, None 

@@ -15,7 +15,6 @@ consumer. It provides certain guarentees...
     3. Messages will contain data for a single subscription. No additional
     parsing is required to separate grouped data for multiple subscriptions.
 """
-
 from .collections import AvailableTimeseriesCollections, LocalTimeseriesCollection
 from .exceptions import (
     ClientSubscriptionError,
@@ -26,7 +25,11 @@ from .exceptions import (
 )
 from .locks import AvailableLocks
 from .managers import AvailableManagers, LocalManager
-from .models import BaseSubscription, ErrorMessage, SubscriptionRequest, cache_subscription_request
+from .models import (
+    BaseSubscription,
+    ErrorMessage,
+    BaseSubscriptionRequest,
+)
 
 
 
@@ -43,6 +46,5 @@ __all__ = [
     "LocalManager",
     "BaseSubscription",
     "ErrorMessage",
-    "SubscriptionRequest",
-    "cache_subscription_request",
+    "BaseSubscriptionRequest",
 ]

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Sequence, Optional, Tuple
+from typing import List, Sequence, Optional
 
 from pydantic import ValidationError
 
@@ -11,6 +11,8 @@ from commandcenter.core.sources.pi_web.http.client import PIWebClient
 from commandcenter.core.sources.pi_web.http.data.util import handle_request
 from commandcenter.core.sources.pi_web.models import (
     PIObjSearch,
+    PIObjSearchFailed,
+    PIObjSearchResult,
     PISubscription
 )
 
@@ -50,7 +52,7 @@ async def get_dataserver_webid(_client: PIWebClient, dataserver: Optional[str] =
 async def search_points(
     client: PIWebClient,
     points: Sequence[PIObjSearch]
-) -> Tuple[List[PISubscription], List[PIObjSearch]]:
+) -> PIObjSearchResult:
     """Get the WebId for a sequence of pi points.
     
     If a point is not found or the query returns multiple results, the query for
@@ -63,34 +65,53 @@ async def search_points(
     is unreliable in some versions of the PI Web API and frequently goes down.
     """
     points = list(points)
-    
+
     dispatch = [get_dataserver_webid(client, point.server) for point in points]
     dataserver_web_ids = await asyncio.gather(*dispatch)
-    
+
     dispatch = [
         handle_request(
             client.dataservers.get_points(
                 dataserver_web_id,
                 nameFilter=point.search,
                 selectedFields="Items.Name;Items.WebId",
-                webIdType=point.web_id_type
-            )
+                webIdType=point.web_id_type.value
+            ),
+            raise_for_status=False,
+            raise_for_error=False
         ) for dataserver_web_id, point in zip(dataserver_web_ids, points)
     ]
     results: List[JSONContent] = await asyncio.gather(*dispatch)
-    subs: List[PISubscription] = []
+    subscriptions: List[PISubscription] = []
     failed: List[PIObjSearch] = []
     
     for point, result in zip(points, results):
+        if not result:
+            failed.append(PIObjSearchFailed(obj=point, reason="Search returned no results."))
+            continue
         items = result.get("Items")
-        if not items or not isinstance(items, list) or len(items) > 1:
-            failed.append(point)
+        if not isinstance(items, list):
+            _LOGGER.warning(
+                "Search returned unhandled data type %s",
+                type(items),
+                extra={"search": point.dict()}
+            )
+            failed.append(PIObjSearchFailed(obj=point, reason="Search returned unhandled data type."))
+        elif len(items) > 1:
+            failed.append(PIObjSearchFailed(obj=point, reason="Search returned more than one result."))
         else:
             try:
                 sub = point.to_subscription(web_id=items[0]["WebId"], name=items[0]["Name"])
-                subs.append(sub)
+                subscriptions.append(sub)
             except ValidationError:
-                _LOGGER.warning("Subscription validation failed", exc_info=True, extra={"raw": items})
-                failed.append(point)
-    
-    return subs, failed
+                _LOGGER.warning(
+                    "Subscription validation failed",
+                    exc_info=True,
+                    extra={
+                        "raw": items,
+                        "search": point.dict()
+                    }
+                )
+                failed.append(PIObjSearchFailed(obj=point, reason="Failed to convert search result into a subscription."))
+
+    return PIObjSearchResult(subscriptions=subscriptions, failed=failed)

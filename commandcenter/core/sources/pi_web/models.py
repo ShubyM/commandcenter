@@ -1,12 +1,17 @@
+import hashlib
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import orjson
 from pendulum.datetime import DateTime
 from pydantic import BaseModel, root_validator, validator
 
-from commandcenter.core.integrations.models import BaseSubscription
+from commandcenter.core.integrations.models import (
+    BaseSubscription,
+    BaseSubscriptionRequest,
+    HashableModel
+)
 from commandcenter.core.integrations.util.common import (
     in_timezone,
     isoparse,
@@ -14,6 +19,7 @@ from commandcenter.core.integrations.util.common import (
     to_camel
 )
 from commandcenter.core.sources import AvailableSources
+from commandcenter.core.util.cache import AbstractTokenGenerator, ReferenceToken
 
 
 
@@ -39,24 +45,6 @@ class PIObjType(str, Enum):
     ELEMENT = "element"
 
 
-class PIObjSearch(BaseModel):
-    """Model for client to search for a WebId based on a search key."""
-    search: str
-    web_id_type: WebIdType = WebIdType.FULL
-    obj_type: PIObjType = PIObjType.POINT
-    server: Optional[str] = None
-    database: Optional[str] = None
-
-    _obj_type = validator("obj_type", allow_reuse=True)(restrict_obj_type)
-    
-    def to_subscription(self, web_id: str, name: str) -> "PISubscription":
-        return PISubscription(
-            web_id=web_id,
-            web_id_type=self.web_id_type,
-            obj_type=self.obj_type,
-            name=name
-        )
-
 class PISubscription(BaseSubscription):
     """Model for all PI object subscriptions."""
     web_id: str
@@ -72,6 +60,86 @@ class PISubscription(BaseSubscription):
         if v != AvailableSources.PI_WEB_API:
             raise ValueError(f"Invalid source '{v}' for {cls.__class__.__name__}")
         return v
+
+
+class PISubscriptionRequest(BaseSubscriptionRequest):
+    """Model for PI Web subscription requests."""
+    subscriptions: List[PISubscription]
+
+
+class PIObjSearch(HashableModel):
+    """Model for client to search for a WebId based on a search key."""
+    search: str
+    web_id_type: WebIdType = WebIdType.FULL
+    obj_type: PIObjType = PIObjType.POINT
+    server: Optional[str] = None
+    database: Optional[str] = None
+
+    _obj_type = validator("obj_type", allow_reuse=True)(restrict_obj_type)
+    
+    def to_subscription(self, web_id: str, name: str) -> PISubscription:
+        return PISubscription(
+            web_id=web_id,
+            web_id_type=self.web_id_type,
+            obj_type=self.obj_type,
+            name=name
+        )
+
+    def __eq__(self, __o: object) -> bool:
+        if not isinstance(__o, PIObjSearch):
+            return False
+        try:
+            return hash(self) == hash(__o)
+        except TypeError:
+            return False
+    
+    def __gt__(self, __o: object) -> bool:
+        if not isinstance(__o, PIObjSearch):
+            raise TypeError(f"'>' not supported between instances of {type(self)} and {type(__o)}.")
+        try:
+            return hash(self) > hash(__o)
+        except TypeError:
+            return False
+    
+    def __lt__(self, __o: object) -> bool:
+        if not isinstance(__o, PIObjSearch):
+            raise TypeError(f"'<' not supported between instances of {type(self)} and {type(__o)}.")
+        try:
+            return hash(self) < hash(__o)
+        except TypeError:
+            return False
+
+
+class PIObjSearchFailed(BaseModel):
+    """Model to detail why an object search failed."""
+    obj: PIObjSearch
+    reason: str
+
+
+class PIObjSearchRequest(AbstractTokenGenerator):
+    search: List[PIObjSearch]
+
+    @validator("search")
+    def _sort_search(cls, search: Sequence[PIObjSearch]) -> List[PIObjSearch]:
+        search = list(set(search))
+        return sorted(search)
+
+    @property
+    def token(self) -> ReferenceToken:
+        """A unique iddentification for this sequence of searches. Tokens are
+        stable across runtimes.
+        """
+        o = ''.join([str(hash(search)) for search in self.search]).encode()
+        token = int(hashlib.shake_128(o).hexdigest(16), 16)
+        return ReferenceToken(token=str(token))
+
+
+class PIObjSearchResult(BaseModel):
+    """The results of an object search. Searches which returned a result are
+    converted to subscriptions. Failed searches provide a reason.
+    """
+    subscriptions: List[Optional[PISubscription]]
+    failed: List[Optional[PIObjSearchFailed]]
 
 
 class PIBaseChannelMessage(BaseModel):

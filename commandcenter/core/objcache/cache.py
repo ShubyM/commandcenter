@@ -1,9 +1,7 @@
-import asyncio
 import functools
 import hashlib
 import inspect
 import logging
-import threading
 import types
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Generator, List, Optional, Tuple, Union
@@ -61,52 +59,42 @@ def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
     """Create a wrapper for a CachedFunction."""
     func = cached_func.func
     function_key = _make_function_key(cached_func.cache_type, func)
-    a_lock = asyncio.Lock()
-    t_lock = threading.Lock()
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         """This function wrapper will only call the underlying function in
         the case of a cache miss.
         """
-        # concurrent calls to an @singleton or @memo decorated function will
-        # most likely experience simultaneous cache misses for the same arguments
-        # if we dont lock the execution of the wrapper here
-        with t_lock:
-            rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
+        rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
+        try:
+            next(rw)
+        except StopIteration as e:
+            return e.value
+        else:
+            return_value = func(*args, **kwargs)
             try:
-                next(rw)
-            except StopIteration as e:
-                return e.value
-            else:
-                return_value = func(*args, **kwargs)
-                try:
-                    rw.send(return_value)
-                except StopIteration:
-                    pass
-                return return_value
+                rw.send(return_value)
+            except StopIteration:
+                pass
+            return return_value
 
     @functools.wraps(func)
     async def async_wrapper(*args, **kwargs):
         """This function wrapper will only call the underlying function in
         the case of a cache miss.
         """
-        # concurrent calls to an @singleton or @memo decorated function will
-        # most likely experience simultaneous cache misses for the same arguments
-        # if we dont lock the execution of the wrapper here
-        async with a_lock:
-            rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
+        rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
+        try:
+            next(rw)
+        except StopIteration as e:
+            return e.value
+        else:
+            return_value = await func(*args, **kwargs)
             try:
-                next(rw)
-            except StopIteration as e:
-                return e.value
-            else:
-                return_value = await func(*args, **kwargs)
-                try:
-                    rw.send(return_value)
-                except StopIteration:
-                    pass
-                return return_value
+                rw.send(return_value)
+            except StopIteration:
+                pass
+            return return_value
 
     def clear():
         """Clear the wrapped function's associated cache."""

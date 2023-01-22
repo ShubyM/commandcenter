@@ -13,6 +13,7 @@ formatters:
 
     standard:
         (): commandcenter.core.logging.formatters.StandardFormatter
+        exclude_fields: [process.pid, process.name, process.thread.id, process.thread.name]
 
 
 filters:
@@ -23,6 +24,8 @@ filters:
         (): commandcenter.core.logging.filters.context.IPAddressFilter
     username:
         (): commandcenter.core.logging.filters.context.UserFilter
+    host:
+        (): commandcenter.core.logging.filters.HostFilter
 
 handlers:
     
@@ -36,13 +39,16 @@ handlers:
         when: midnight
         backupCount: 7
         formatter: standard
-        filters: [correlation_id, ip_address, username]
+        filters: [correlation_id, ip_address, username, host]
 
 loggers:
     commandcenter.core:
         level: INFO
 
     commandcenter.services:
+        level: INFO
+
+    commandcenter.common:
         level: INFO
 
     uvicorn:

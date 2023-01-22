@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from abc import ABC, abstractmethod, abstractproperty
 from collections import deque
@@ -22,6 +23,9 @@ from typing import (
 from commandcenter.core.integrations.models import BaseSubscription, ErrorMessage
 from commandcenter.core.integrations.types import TimeseriesRow
 
+
+
+_LOGGER = logging.getLogger("commandcenter.core.integrations")
 
 
 class AbstractClient(ABC):
@@ -328,6 +332,7 @@ class AbstractManager(ABC):
 
     async def close(self) -> None:
         """Stop all subscribers and close the client."""
+        _LOGGER.debug("Closing %s", self.__class__.__name__)
         if not self.closed:
             for subscriber in self.subscribers: subscriber.stop()
             self.subscribers.clear()

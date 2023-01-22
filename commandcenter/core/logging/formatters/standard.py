@@ -86,7 +86,7 @@ class StandardFormatter(logging.Formatter):
         # Pull all extras and flatten them to be sent into '_is_field_excluded'
         # since they can be defined as 'extras={"http": {"method": "GET"}}'
         extra_keys = set(available).difference(LOGRECORD_DICT)
-        extras = flatten_dict.flatten({key: available[key] for key in extra_keys}, reducer="dot")
+        extras = flatten_dict.flatten({"extra": {key: available[key] for key in extra_keys}}, reducer="dot")
 
         # Merge in any keys that were set within 'extra={...}'
         for field, value in extras.items():

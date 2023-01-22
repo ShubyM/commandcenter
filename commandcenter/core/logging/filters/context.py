@@ -24,5 +24,5 @@ class UserFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         user = user_context.get()
         if user is not None:
-            record.username = user
+            record.user = user.identity
         return True

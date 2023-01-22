@@ -4,6 +4,8 @@ from collections.abc import AsyncIterable
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
+import pendulum
+
 from commandcenter.core.integrations.types import (
     JSONContent,
     JSONPrimitive,
@@ -69,8 +71,8 @@ async def get_interpolated(
         ClientError: Error in `aiohttp.ClientSession`.
     """
     allowed = (PIObjType.ATTRIBUTE, PIObjType.POINT)
-    if not all([subscription.obj_type not in allowed for subscription in subscriptions]):
-        raise ValueError(f"All obj types for subscriptions must one {', '.join(allowed)}")
+    if not all([subscription.obj_type in allowed for subscription in subscriptions]):
+        raise ValueError(f"All obj types for subscriptions must be one of {', '.join(allowed)}")
     
     end_time = end_time or datetime.now()
     if start_time >= end_time:
@@ -78,16 +80,16 @@ async def get_interpolated(
 
     subscriptions = sorted(subscriptions)
     web_ids = [subscription.web_id for subscription in subscriptions]
-    start_time_utc = in_timezone(start_time, "UTC")
-    end_time_utc = in_timezone(end_time, "UTC")
+    # start_time_utc = in_timezone(start_time, "UTC")
+    # end_time_utc = in_timezone(end_time, "UTC")
     interval = timedelta(seconds=interval) if isinstance(interval, int) else interval
     
     if not isinstance(interval, timedelta):
         raise TypeError(f"Interval must be timedelta or int. Got {type(interval)}")
     str_interval = f"{interval.total_seconds()} seconds"
     start_times, end_times = split_interpolated_range(
-        start_time_utc,
-        end_time_utc,
+        start_time,
+        end_time,
         interval,
         request_chunk_size
     )
@@ -101,7 +103,7 @@ async def get_interpolated(
                     web_id,
                     startTime=start_time,
                     endTime=end_time,
-                    timeZone="UTC",
+                    timeZone=timezone,
                     interval=str_interval,
                     selectedFields="Items.Timestamp;Items.Value;Items.Good"
                 ),
@@ -112,7 +114,7 @@ async def get_interpolated(
         contents = await asyncio.gather(*dispatch)
         data = [format_streams_content(content) for content in contents]
         index = get_timestamp_index(data)
-        
+
         for row in iter_rows(index, data, timezone):
             yield row
 
@@ -158,8 +160,8 @@ async def get_recorded(
         ClientError: Error in `aiohttp.ClientSession`.
     """
     allowed = (PIObjType.ATTRIBUTE, PIObjType.POINT)
-    if not all([subscription.obj_type not in allowed for subscription in subscriptions]):
-        raise ValueError(f"All obj types for subscriptions must one {', '.join(allowed)}")
+    if not all([subscription.obj_type in allowed for subscription in subscriptions]):
+        raise ValueError(f"All obj types for subscriptions must be one of {', '.join(allowed)}")
 
     end_time = end_time or datetime.now()
     if start_time >= end_time:

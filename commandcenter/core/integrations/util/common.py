@@ -11,6 +11,7 @@ from pendulum.datetime import DateTime
 from commandcenter.core.integrations.types import JSONPrimitive, TimeseriesRow
 
 
+
 def to_camel(string: str) -> str:
     """Covert snake case (arg_a) to camel case (ArgA)."""
     return ''.join(word.capitalize() for word in string.split('_'))
@@ -21,11 +22,14 @@ def isoparse(timestamp: str) -> DateTime:
     return pendulum.instance(dateutil.parser.isoparse(timestamp))
 
 
-def in_timezone(timestamp: Union[str, DateTime], timezone: str) -> DateTime:
+def in_timezone(timestamp: Union[str, datetime, DateTime], timezone: str) -> DateTime:
     """Parse iso8601 timestamp or DateTime object to DateTime in specified timezone."""
     if isinstance(timestamp, str):
         return isoparse(timestamp).in_timezone(timezone).replace(tzinfo=None)
-    return timestamp.in_timezone(timezone).replace(tzinfo=None)
+    elif isinstance(timestamp, datetime):
+        return pendulum.instance(timestamp).in_timezone(timezone).replace(tzinfo=None)
+    else:
+        return timestamp.in_timezone(timezone).replace(tzinfo=None)
 
 
 def json_loads(v: Union[str, bytes]):
@@ -78,18 +82,13 @@ def iter_rows(
     """Iterate through the data for each web_id row by row and produce rows
     which have data aligned on a common timestamp.
     """
-    for timestamp in index:
-        if timezone is not None:
-            timestamp = in_timezone(timestamp, timezone)
-        if isinstance(timestamp, str):
-            timestamp = isoparse(timestamp)
-        
-        iso_timestamp = timestamp.isoformat()
-        
+    for i, timestamp in enumerate(index):
+        if i == 0:
+            print(timestamp)
         row = []
         for datum in data:
             try:
-                if datum["timestamp"][0] == iso_timestamp:
+                if datum["timestamp"][0] == timestamp:
                     row.append(datum["value"].pop(0))
                     datum["timestamp"].pop(0)
                 else:
@@ -98,4 +97,10 @@ def iter_rows(
             except IndexError:
                 # No more data for that web id
                 row.append(None)
+        if timezone is not None:
+            timestamp = in_timezone(timestamp, timezone)
+        if isinstance(timestamp, str):
+            timestamp = isoparse(timestamp)
+        if i == 0:
+            print(timestamp)
         yield timestamp, row

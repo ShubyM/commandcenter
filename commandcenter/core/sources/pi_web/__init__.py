@@ -6,7 +6,17 @@ from .http import (
     get_recorded,
     search_points
 )
-from .models import PISubscriberMessage, PISubscription, WebIdType
+from .models import (
+    PIObjSearch,
+    PIObjSearchFailed,
+    PIObjSearchRequest,
+    PIObjSearchResult,
+    PIObjType,
+    PISubscriberMessage,
+    PISubscription,
+    PISubscriptionRequest,
+    WebIdType
+)
 from .subscriber import PISubscriber
 
 
@@ -20,8 +30,14 @@ __all__ = [
     "get_interpolated",
     "get_recorded",
     "search_points",
+    "PIObjSearch",
+    "PIObjSearchFailed",
+    "PIObjSearchRequest",
+    "PIObjSearchResult",
+    "PIObjType",
     "PISubscriberMessage",
     "PISubscription",
+    "PISubscriptionRequest",
     "WebIdType",
     "PISubscriber",
 ]

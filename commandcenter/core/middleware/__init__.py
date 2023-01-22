@@ -1,8 +1,9 @@
-from .context import IPAddressMiddleware, UserMiddleware
+from .context import CorrelationIDMiddlewareMod, IPAddressMiddleware, UserMiddleware
 
 
 
 __all__ = [
+    "CorrelationIDMiddlewareMod",
     "IPAddressMiddleware",
     "UserMiddleware",
 ]

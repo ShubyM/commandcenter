@@ -37,7 +37,6 @@ async def token(
     )
 
 
-# Requires an authenticated user
 @router.get("/whoami", response_model=BaseUser, dependencies=[Depends(requires())])
 async def get_user(request: Request) -> BaseUser:
     """Retrieve user information for current logged in user."""

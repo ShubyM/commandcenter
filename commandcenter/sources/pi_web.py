@@ -84,11 +84,8 @@ def resolve_pi_channel_client_dependencies(
 
 
 @singleton
-async def get_pi_http_client():
-    """Initialize PI Web API HTTP client from the environment configuration.
-    
-    This can also be used as a dependency.
-    """
+async def build_pi_http_client():
+    """Initialize PI Web API HTTP client from the environment configuration."""
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
     from commandcenter.config.sources.pi_web import (
@@ -131,3 +128,8 @@ async def get_pi_http_client():
     )
 
     return PIWebClient(session)
+
+
+async def get_pi_http_client():
+    """Dependency for building an PI Web HTTP client."""
+    return await build_pi_http_client()

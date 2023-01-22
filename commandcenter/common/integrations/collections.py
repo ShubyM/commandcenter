@@ -1,19 +1,19 @@
 from fastapi import Depends
 
-from commandcenter.common.integrations.subscriptions import get_cached_subscription_request
+from commandcenter.common.cache import get_cached_reference
 from commandcenter.config.integrations.collections import (
     CC_INTEGRATIONS_TIMESERIES_COLLECTION,
     CC_INTEGRATIONS_TIMESERIES_COLLECTION_DELTA
 )
 from commandcenter.core.integrations.abc import AbstractTimeseriesCollection
 from commandcenter.core.integrations.collections import AvailableTimeseriesCollections
-from commandcenter.core.integrations.models import SubscriptionRequest
+from commandcenter.core.integrations.models import BaseSubscriptionRequest
 from commandcenter.core.timeseries import timeseries_collection
 
 
 
 async def get_timeseries_collection(
-    subscriptions: SubscriptionRequest = Depends(get_cached_subscription_request)
+    subscriptions: BaseSubscriptionRequest = Depends(get_cached_reference(BaseSubscriptionRequest))
 ) -> AbstractTimeseriesCollection:
     """Initialize a timseries collection from the environment configuration.
     

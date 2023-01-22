@@ -11,6 +11,7 @@ from typing import (
     Union,
 )
 
+import anyio
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware import Middleware
 
@@ -30,12 +31,12 @@ async def cleanup_resources() -> None:
     the singleton and memo caches.
     """
     try:
-        loop = asyncio.get_running_loop()
+        _ = asyncio.get_running_loop()
         closers = [obj for obj in iter_singletons() if hasattr(obj, "close")]
         if closers:
             async_closers = [obj.close() for obj in closers if inspect.iscoroutinefunction(obj.close)]
             sync_closers = [obj.close for obj in closers if not inspect.iscoroutinefunction(obj.close)]
-            closers = [loop.run_in_executor(closer) for closer in sync_closers]
+            closers = [anyio.to_thread.run_sync(closer) for closer in sync_closers]
             closers.extend(async_closers)
             results = await asyncio.gather(*closers, return_exceptions=True)
             for result in results:

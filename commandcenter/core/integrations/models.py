@@ -1,5 +1,5 @@
 import hashlib
-from typing import List, Optional, Sequence, Set
+from typing import List, Sequence, Set
 
 import orjson
 from attrs import frozen, field
@@ -7,35 +7,37 @@ from attrs.validators import deep_iterable, instance_of
 from pydantic import BaseModel, validator
 
 from commandcenter.core.integrations.util.common import json_loads
-from commandcenter.core.objcache import memo
 from commandcenter.core.sources import AvailableSources
+from commandcenter.core.util.cache import AbstractTokenGenerator, ReferenceToken
 
 
 
-class BaseSubscription(BaseModel):
-    """Base model for all subscriptions.
+class HashableModel(BaseModel):
+    """A hashable base model.
     
-    Subscriptions must be hashable and json encode/decode(able). Hashes for
-    `BaseSubscription` use the JSON string representation of the object and are
-    consistent across runtimes.
-
-    Note: Subscription implementations must not override the comparison operators.
-    These operators are based on the hash of the model which is critical when
-    sorting sequences of mixed subscription types.
+    Models must be hashable and json encode/decode(able). Hashes for use the
+    JSON string representation of the object and are consistent across runtimes.
     """
-    source: AvailableSources
-
     class Config:
         frozen=True
         json_dumps=lambda _obj, default: orjson.dumps(_obj, default=default).decode()
         json_loads=json_loads
-    
+
     def __hash__(self) -> int:
         try:
             o = self.json().encode()
         except Exception as e:
             raise TypeError(f"unhashable type: {e.__str__()}")
         return int(hashlib.shake_128(o).hexdigest(16), 16)
+
+class BaseSubscription(HashableModel):
+    """Base model for all subscriptions.
+
+    Note: Subscription implementations must not override the comparison operators.
+    These operators are based on the hash of the model which is critical when
+    sorting sequences of mixed subscription types.
+    """
+    source: AvailableSources
     
     def __eq__(self, __o: object) -> bool:
         if not isinstance(__o, BaseSubscription):
@@ -45,7 +47,7 @@ class BaseSubscription(BaseModel):
         except TypeError:
             return False
     
-    def __ge__(self, __o: object) -> bool:
+    def __gt__(self, __o: object) -> bool:
         if not isinstance(__o, BaseSubscription):
             raise TypeError(f"'>' not supported between instances of {type(self)} and {type(__o)}.")
         try:
@@ -60,12 +62,6 @@ class BaseSubscription(BaseModel):
             return hash(self) < hash(__o)
         except TypeError:
             return False
-    
-    def __repr__(self) -> str:
-        try:
-            return "{}: {}".format(self.__class__.__name__, self.json())
-        except Exception:
-            return "{}: no json repr".format(self.__class__.__name__)
 
 
 @frozen
@@ -88,43 +84,22 @@ class ErrorMessage:
         return "{} - {} subscriptions".format(self.exc.__class__.__name__, len(self.subscriptions))
 
 
-class SubscriptionKey(BaseModel):
-    """Subscription key model."""
-    key: str
-
-class SubscriptionRequest(BaseModel):
+class BaseSubscriptionRequest(AbstractTokenGenerator):
     """Base model for a sequence of subscriptions that a client registers with
     one or more integrations.
     """
-    subscriptions: Sequence["BaseSubscription"]
+    subscriptions: Sequence[BaseSubscription]
     
     @validator("subscriptions")
-    def _prepare_subscriptions(cls, subscriptions: Sequence["BaseSubscription"]) -> List["BaseSubscription"]:
+    def _sort_subscriptions(cls, subscriptions: Sequence[BaseSubscription]) -> List[BaseSubscription]:
         subscriptions = list(set(subscriptions))
         return sorted(subscriptions)
 
     @property
-    def key(self) -> "SubscriptionKey":
-        """A unique iddentification for this sequence of subscriptions. Keys are
+    def token(self) -> ReferenceToken:
+        """A unique iddentification for this sequence of subscriptions. Tokens are
         stable across runtimes.
         """
         o = ''.join([str(hash(subscription)) for subscription in self.subscriptions]).encode()
-        key = int(hashlib.shake_128(o).hexdigest(16), 16)
-        return SubscriptionKey(key=str(key))
-
-
-@memo(persist=True)
-def cache_subscription_request(
-    key: str,
-    _subscription_request: Optional["SubscriptionRequest"] = None
-) -> "SubscriptionRequest":
-    """This is bit of hack for situations where an actual caching server like
-    redis is not available. You can provide the key for a subscription request
-    along with the request itself then recall that request by just providing the
-    key. Only the key provided is used to calculate the cache key.
-
-    Redis is the correct answer here, but we work with what we got right?
-    """
-    if not _subscription_request:
-        raise ValueError()
-    return _subscription_request
+        token = int(hashlib.shake_128(o).hexdigest(16), 16)
+        return ReferenceToken(token=str(token))

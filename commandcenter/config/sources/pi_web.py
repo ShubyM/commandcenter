@@ -13,7 +13,7 @@ client_parameters = inspect.signature(PIChannelClient).parameters
 
 # HTTP Client Params
 CC_SOURCES_PIWEB_HTTP_BASE_URL = config(
-    "CC_SOURCES_PIWEB_BASE_URL",
+    "CC_SOURCES_PIWEB_HTTP_BASE_URL",
     default=""
 )
 CC_SOURCES_PIWEB_HTTP_MAX_CONNECTIONS = config(

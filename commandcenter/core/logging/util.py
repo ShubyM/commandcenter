@@ -137,8 +137,9 @@ EXTRACTORS = {
     "timestamp": lambda r: datetime.fromtimestamp(r.created).isoformat(),
     "api_version": lambda _: COMMANDCENTER_VERSION,
     "context.correlation_id": record_attribute("correlation_id"),
-    "context.username": record_attribute("username"),
+    "context.user": record_attribute("user"),
     "context.ip_address": record_attribute("ip_address"),
+    "context.host": record_attribute("host"),
     "log.level": lambda r: (r.levelname.lower() if r.levelname else None),
     "log.original": lambda r: r.getMessage(),
     "log.logger": record_attribute("name"),
@@ -189,4 +190,4 @@ LOGRECORD_DICT = {
     } | LOGRECORD_DIR
 
 # We need to add the record attributes that we added with filters and extracted
-LOGRECORD_DICT.update({"username", "ip_address", "correlation_id"})
+LOGRECORD_DICT.update({"user", "ip_address", "correlation_id", "host"})

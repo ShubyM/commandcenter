@@ -1,7 +1,8 @@
+import asyncio
+import functools
 import inspect
 import logging
 import threading
-import types
 from collections.abc import Iterable
 from typing import Any, Callable, Dict, Optional, TypeVar, cast
 
@@ -131,11 +132,37 @@ def iter_singletons() -> Iterable[Any]:
         yield obj
 
 
+def call_sync(
+    func:Callable[[Any], Any],
+    lock: threading.Lock,
+    *args: Any,
+    **kwargs: Any
+) -> Any:
+    with lock:
+        wrapped = create_cache_wrapper(
+            SingletonFunction(func=func)
+        )
+        return wrapped(*args, **kwargs)
+
+async def call_async(
+    func:Callable[[Any], Any],
+    lock: asyncio.Lock,
+    *args: Any,
+    **kwargs: Any
+) -> Any:
+    async with lock:
+        wrapped = create_cache_wrapper(
+            SingletonFunction(func=func)
+        )
+        return await wrapped(*args, **kwargs)
+
 class SingletonAPI:
     """Implements the public singleton API: the `@singleton` decorator,
     and `singleton.clear()`.
     """
     F = TypeVar("F", bound=Callable[..., Any])
+    t_lock: threading.Lock = threading.Lock()
+    a_lock: asyncio.Lock = asyncio.Lock()
 
     def __call__(self, func: Optional[F] = None):
         """Function decorator to store singleton objects.
@@ -189,49 +216,16 @@ class SingletonAPI:
         """
         if func is None:
             def decorator(f):
-                def wrapper(*args, **kwargs):
-                    wrapped = create_cache_wrapper(
-                        SingletonFunction(
-                            func=cast(types.FunctionType, f)
-                        )
-                    )
-                    return wrapped(*args, **kwargs)
-                
-                async def async_wrapper(*args, **kwargs):
-                    wrapped = create_cache_wrapper(
-                        SingletonFunction(
-                            func=cast(types.FunctionType, f)
-                        )
-                    )
-                    return await wrapped(*args, **kwargs)
-                
                 if inspect.iscoroutinefunction(func):
-                    return async_wrapper
-                return wrapper
+                    return functools.partial(call_async, f, self.a_lock)
+                return functools.partial(call_sync, f, self.t_lock)
             
             return decorator
         
         else:
-            def wrapper(*args, **kwargs):
-                wrapped = create_cache_wrapper(
-                    SingletonFunction(
-                        func=cast(types.FunctionType, func)
-                    )
-                )
-                return wrapped(*args, **kwargs)
-            
-            async def async_wrapper(*args, **kwargs):
-                wrapped = create_cache_wrapper(
-                    SingletonFunction(
-                        func=cast(types.FunctionType, func)
-                    )
-                )
-                return await wrapped(*args, **kwargs)
-            
             if inspect.iscoroutinefunction(func):
-                return async_wrapper
-            return wrapper
-
+                return functools.partial(call_async, func, self.a_lock)
+            return functools.partial(call_sync, func, self.t_lock)
 
     @staticmethod
     def clear() -> None:
