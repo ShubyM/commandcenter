@@ -1,3 +1,6 @@
+from typing import List
+from fastapi import Depends
+
 from commandcenter.core.sources import AvailableSources
 from commandcenter.core.util.context import source_context
 
@@ -12,6 +15,7 @@ class SourceContext:
         self.source = source
 
     async def __call__(self) -> None:
+        print("Source context called.")
         try:
             token = source_context.set(self.source)
             yield

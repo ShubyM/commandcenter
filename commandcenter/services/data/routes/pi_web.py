@@ -93,7 +93,8 @@ async def stream(
 @router.websocket("/stream/{token}/ws")
 async def stream_ws(
     websocket: WebSocket,
-    token: str
+    token: str,
+    _ = Depends(SourceContext(AvailableSources.PI_WEB_API))
 ):
     """Submit a subscription key to stream PI data."""
     try:
@@ -102,8 +103,8 @@ async def stream_ws(
         _LOGGER.info("Received invalid token")
         await websocket.close(code=1008, reason="Invalid token")
         raise
-    with set_source(AvailableSources.PI_WEB_API):
-        manager = await get_manager()
+    #with set_source(AvailableSources.PI_WEB_API):
+    manager = await get_manager()
     try:
         try:
             subscriber = await manager.subscribe(subscriptions=subscriptions.subscriptions)
@@ -171,8 +172,8 @@ async def points(
     return await handle_search(client, objsearch)
 
 
-@router.get("/interpolated/{token}/json")
-async def recorded(
+@router.get("/interpolated/{token}/jsonl")
+async def interpolated_jsonl(
     subscriptions: PISubscriptionRequest = Depends(get_cached_reference(PISubscriptionRequest)),
     client: PIWebClient = Depends(get_pi_http_client),
     start_time: str = Query(default=None, description="Start time for query. Defaults to -1h."),
@@ -211,6 +212,51 @@ async def recorded(
             buffer,
             writer
         ),
-        media_type="application/json"
+        media_type="application/x-jsonlines",
+        headers={"Content-Disposition": "attachment; filename=export.jsonl"}
     )
+
+
+@router.get("/interpolated/{token}/csv")
+async def interpolated_csv(
+    subscriptions: PISubscriptionRequest = Depends(get_cached_reference(PISubscriptionRequest)),
+    client: PIWebClient = Depends(get_pi_http_client),
+    start_time: str = Query(default=None, description="Start time for query. Defaults to -1h."),
+    end_time: str = Query(default=None, description="End time for query. Defaults to current time."),
+    interval: int = Query(default=60, description="Time interval in seconds."),
+    request_chunk_size: int = Query(default=5000, description="Max rows to return for single PI Web request."),
+    timezone: str = Query(default=TIMEZONE, description=f"Timezone to convert data into. Defaults to application server timezone ({TIMEZONE}).")
+):
+    start_time = parse(start_time) if start_time else datetime.now()-timedelta(hours=1)
+    end_time = parse(end_time) if end_time else end_time
+    iterator = get_interpolated(
+        client,
+        subscriptions.subscriptions,
+        start_time,
+        end_time,
+        interval,
+        request_chunk_size,
+        timezone
+    )
+    try:
+        header = await iterator.__anext__()
+    except StopAsyncIteration:
+        # Something failed
+        raise RuntimeError("Timseries iterator exhausted.")
     
+    if not len(header) == len(subscriptions.subscriptions):
+        raise ValueError("Header row does not match number of subscriptions.")
+    
+    writer, buffer = csv_write()
+
+    writer(["Timestamp", *header])
+
+    return StreamingResponse(
+        timeseries_chunk_event_generator(
+            iterator,
+            buffer,
+            writer
+        ),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=export.csv"}
+    )

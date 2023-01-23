@@ -95,7 +95,7 @@ async def websocket_event_generator(websocket: WebSocket, subscriber: AbstractSu
 
     finally:
         # Last resort in case we really exited abnormally
-        if not websocket.state != WebSocketState.DISCONNECTED:
+        if websocket.state != WebSocketState.DISCONNECTED:
             try:
                 await websocket.close()
             except Exception:
@@ -110,8 +110,8 @@ def jsonlines_write() -> Tuple[Writer, io.StringIO]:
 
 def csv_write() -> csv.writer:
     buffer = io.StringIO(newline='')
-    writer = csv.writer(buffer, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-    return functools.partial(writer.writerow)
+    writer = csv.writer(buffer, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+    return functools.partial(writer.writerow), buffer
 
 
 async def timeseries_chunk_event_generator(
