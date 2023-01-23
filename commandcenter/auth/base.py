@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from jose import ExpiredSignatureError, JWTError, jwt
 from pydantic import BaseModel, SecretStr
@@ -32,7 +32,7 @@ class TokenHandler(BaseModel, JWTTokenHandler):
             algorithm=self.algorithm
         )
 
-    def validate(self, token: str) -> Optional[str]:
+    def validate(self, token: str) -> str | None:
         try:
             payload = jwt.decode(
                 token,
@@ -60,7 +60,7 @@ class BaseAuthenticationBackend(AuthenticationBackend):
         self.handler = handler
         self.client = client
 
-    async def authenticate(self, conn: HTTPConnection) -> Optional[Tuple[AuthCredentials, BaseUser]]:
+    async def authenticate(self, conn: HTTPConnection) -> Tuple[AuthCredentials, BaseUser] | None:
         """Validate a token from the connection and return a user along with
         their scopes
         

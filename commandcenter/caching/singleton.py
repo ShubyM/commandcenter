@@ -6,17 +6,40 @@ import threading
 from collections.abc import Iterable
 from typing import Any, Callable, Dict, Optional, TypeVar
 
-from commandcenter.core.objcache.cache import (
-    AbstractCache,
+from commandcenter.caching.core.cache import (
+    Cache,
     CachedFunction,
-    create_cache_wrapper
+    procedural_clear,
+    wrap_async,
+    wrap_sync
 )
-from commandcenter.core.objcache.exceptions import CacheKeyNotFoundError
-from commandcenter.core.objcache.util import CacheType
+from commandcenter.caching.core.caches import SingletonCache
+from commandcenter.caching.core.util import CacheType
 
 
 
 _LOGGER = logging.getLogger("commandcenter.caching.singleton")
+
+
+class SingletonFunction(CachedFunction):
+    """Implements the `CachedFunction` protocol for `@singleton`"""
+    @property
+    def cache_type(self) -> CacheType:
+        """The cache type for this function."""
+        return CacheType.SINGLETON
+
+    @property
+    def display_name(self) -> str:
+        """A human-readable name for the cached function"""
+        return f"{self.func.__module__}.{self.func.__qualname__}"
+
+    def get_function_cache(self, function_key: str) -> Cache:
+        """Get or create the function cache for the given key."""
+        return _singleton_caches.get_cache(
+            func=self.func,
+            key=function_key,
+            display_name=self.display_name
+        )
 
 
 class SingletonCaches(Iterable[Any]):
@@ -27,6 +50,7 @@ class SingletonCaches(Iterable[Any]):
 
     def get_cache(
         self,
+        func: Callable[[Any], Any],
         key: str,
         display_name: str
     ) -> "SingletonCache":
@@ -34,8 +58,7 @@ class SingletonCaches(Iterable[Any]):
         
         If it doesn't exist, create a new one with the given params.
         """
-        # Get the existing cache, if it exists, and validate that its params
-        # haven't changed.
+        # Get the existing cache, if it exists
         with self._caches_lock:
             cache = self._function_caches.get(key)
             if cache is not None:
@@ -47,6 +70,11 @@ class SingletonCaches(Iterable[Any]):
                 key=key,
                 display_name=display_name
             )
+            if inspect.iscoroutinefunction(func):
+                lock = asyncio.Lock()
+            else:
+                lock = threading.Lock()
+            cache.set_lock(lock)
             self._function_caches[key] = cache
             return cache
 
@@ -67,61 +95,6 @@ class SingletonCaches(Iterable[Any]):
 _singleton_caches = SingletonCaches()
 
 
-class SingletonFunction(CachedFunction):
-    """Implements the `CachedFunction` protocol for `@singleton`"""
-    @property
-    def cache_type(self) -> CacheType:
-        """The cache type for this function."""
-        return CacheType.SINGLETON
-
-    @property
-    def display_name(self) -> str:
-        """A human-readable name for the cached function"""
-        return f"{self.func.__module__}.{self.func.__qualname__}"
-
-    def get_function_cache(self, function_key: str) -> AbstractCache:
-        """Get or create the function cache for the given key."""
-        return _singleton_caches.get_cache(
-            key=function_key,
-            display_name=self.display_name
-        )
-
-
-class SingletonCache(AbstractCache):
-    """Manages cached values for a single singleton function."""
-    def __init__(self, key: str, display_name: str):
-        self.key = key
-        self.display_name = display_name
-        self._mem_cache: Dict[str, Any] = {}
-        self._mem_cache_lock = threading.Lock()
-
-    def read_result(self, key: str) -> Any:
-        """Read a value and associated messages from the cache.
-
-        Raise `CacheKeyNotFoundError` if the value doesn't exist.
-        """
-        with self._mem_cache_lock:
-            try:
-                return self._mem_cache[key]
-            except KeyError:
-                raise CacheKeyNotFoundError()
-    
-    def write_result(self, key: str, value: Any) -> None:
-        """Write a value and associated messages to the cache."""
-        with self._mem_cache_lock:
-            self._mem_cache[key] = value
-
-    def clear(self) -> None:
-        """Clear all values from this function cache."""
-        with self._mem_cache_lock:
-            self._mem_cache.clear()
-
-    def __iter__(self) -> Iterable[Any]:
-        with self._mem_cache_lock:
-            for value in self._mem_cache.values():
-                yield value
-
-
 def iter_singletons() -> Iterable[Any]:
     """Iterate over all singleton objects in the cache.
     
@@ -132,37 +105,11 @@ def iter_singletons() -> Iterable[Any]:
         yield obj
 
 
-def call_sync(
-    func:Callable[[Any], Any],
-    lock: threading.Lock,
-    *args: Any,
-    **kwargs: Any
-) -> Any:
-    with lock:
-        wrapped = create_cache_wrapper(
-            SingletonFunction(func=func)
-        )
-        return wrapped(*args, **kwargs)
-
-async def call_async(
-    func:Callable[[Any], Any],
-    lock: asyncio.Lock,
-    *args: Any,
-    **kwargs: Any
-) -> Any:
-    async with lock:
-        wrapped = create_cache_wrapper(
-            SingletonFunction(func=func)
-        )
-        return await wrapped(*args, **kwargs)
-
 class SingletonAPI:
     """Implements the public singleton API: the `@singleton` decorator,
     and `singleton.clear()`.
     """
     F = TypeVar("F", bound=Callable[..., Any])
-    t_lock: threading.Lock = threading.Lock()
-    a_lock: asyncio.Lock = asyncio.Lock()
 
     def __call__(self, func: Optional[F] = None):
         """Function decorator to store singleton objects.
@@ -221,16 +168,23 @@ class SingletonAPI:
         """
         if func is None:
             def decorator(f):
-                if inspect.iscoroutinefunction(func):
-                    return functools.partial(call_async, f, self.a_lock)
-                return functools.partial(call_sync, f, self.t_lock)
-            
+                cached_func = SingletonFunction(f)
+                if inspect.iscoroutinefunction(f):
+                    partial = functools.partial(wrap_async, cached_func)
+                else:
+                    partial = functools.partial(wrap_sync, cached_func)
+                partial.clear = functools.partial(procedural_clear, cached_func)
+                return partial
             return decorator
         
         else:
+            cached_func = SingletonFunction(func)
             if inspect.iscoroutinefunction(func):
-                return functools.partial(call_async, func, self.a_lock)
-            return functools.partial(call_sync, func, self.t_lock)
+                partial = functools.partial(wrap_async, cached_func)
+            else:
+                partial = functools.partial(wrap_sync, cached_func)
+            partial.clear = functools.partial(procedural_clear, cached_func)
+            return partial
 
     @staticmethod
     def clear() -> None:

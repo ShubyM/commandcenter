@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, Protocol
 
 from commandcenter.auth.user import BaseUser
 
@@ -41,7 +41,7 @@ class JWTTokenHandler(Protocol):
         """
         ...
 
-    def validate(self, token: str) -> Optional[str]:
+    def validate(self, token: str) -> str | None:
         """Validate and extract the username from the token.
 
         Args:

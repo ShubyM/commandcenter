@@ -4,7 +4,7 @@ import math
 import socket
 import subprocess
 import timeit
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from commandcenter.auth.backends.activedirectory.exceptions import NoHosts
 
@@ -25,7 +25,7 @@ def discover_domain() -> str:
 
 
 def discover_domain_controllers(
-    domain: Optional[str] = None,
+    domain: str | None = None,
     port: int = 389,
     family: socket.AddressFamily = socket.AF_INET,
     sock_type: socket.SocketType = socket.SOCK_STREAM,

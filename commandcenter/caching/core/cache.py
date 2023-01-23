@@ -1,10 +1,12 @@
+import asyncio
 import functools
 import hashlib
 import inspect
 import logging
+import threading
 import types
-from abc import ABC, abstractmethod
-from typing import Any, Callable, Generator, List, Optional, Tuple
+from collections.abc import Coroutine
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 
 from commandcenter.caching.core.exceptions import (
     CacheKeyNotFoundError,
@@ -20,26 +22,32 @@ from commandcenter.caching.core.util import CacheType
 _LOGGER = logging.getLogger("commandcenter.caching")
 
 
-class AbstractCache(ABC):
+class Cache:
     """Standard function cache interface."""
-    @abstractmethod
+    def __init__(self) -> None:
+        self._execution_lock: Union[threading.Lock, asyncio.Lock] = None
+
     def read_result(self, value_key: str) -> Any:
         """Read a value and associated messages from the cache.
         
         Raises:
           CacheKeyNotFoundError: Raised if value_key is not in the cache.
         """
+        raise NotImplementedError()
 
-    @abstractmethod
     def write_result(self, value_key: str, value: Any) -> None:
         """Write a value to the cache, overwriting any existing result that uses
         the value_key.
         """
+        raise NotImplementedError()
 
-    @abstractmethod
     def clear(self) -> None:
         """Clear all values from this function cache."""
+        raise NotImplementedError()
 
+    def set_lock(self, lock: Union[threading.Lock, asyncio.Lock]) -> None:
+        self._execution_lock = lock
+    
 
 class CachedFunction:
     """Encapsulates data for a cached function instance."""
@@ -50,7 +58,7 @@ class CachedFunction:
     def cache_type(self) -> CacheType:
         raise NotImplementedError
 
-    def get_function_cache(self, function_key: str) -> AbstractCache:
+    def get_function_cache(self, function_key: str) -> Cache:
         """Get or create the function cache for the given key."""
         raise NotImplementedError
 
@@ -58,55 +66,52 @@ class CachedFunction:
 def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
     """Create a wrapper for a CachedFunction."""
     func = cached_func.func
-    function_key = _make_function_key(cached_func.cache_type, func)
+    function_key = _make_function_key(cached_func.cache_type, cached_func.func)
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         """This function wrapper will only call the underlying function in
         the case of a cache miss.
         """
-        rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
-        try:
-            next(rw)
-        except StopIteration as e:
-            return e.value
-        else:
-            return_value = func(*args, **kwargs)
+        cache = cached_func.get_function_cache(function_key=function_key)
+        with cache._execution_lock:
+            rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
             try:
-                rw.send(return_value)
-            except StopIteration:
-                pass
-            return return_value
+                next(rw)
+            except StopIteration as e:
+                return e.value
+            else:
+                return_value = func(*args, **kwargs)
+                try:
+                    rw.send(return_value)
+                except StopIteration:
+                    pass
+                return return_value
 
     @functools.wraps(func)
     async def async_wrapper(*args, **kwargs):
         """This function wrapper will only call the underlying function in
         the case of a cache miss.
         """
-        rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
-        try:
-            next(rw)
-        except StopIteration as e:
-            return e.value
-        else:
-            return_value = await func(*args, **kwargs)
+        cache = cached_func.get_function_cache(function_key=function_key)
+        async with cache._execution_lock:
+            rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
             try:
-                rw.send(return_value)
-            except StopIteration:
-                pass
-            return return_value
-
-    def clear():
-        """Clear the wrapped function's associated cache."""
-        cache = cached_func.get_function_cache(function_key)
-        cache.clear()
+                next(rw)
+            except StopIteration as e:
+                return e.value
+            else:
+                return_value = await func(*args, **kwargs)
+                try:
+                    rw.send(return_value)
+                except StopIteration:
+                    pass
+                return return_value
 
     if inspect.iscoroutinefunction(func):
         cache_wrapper = async_wrapper
     else:
         cache_wrapper = wrapper
-
-    cache_wrapper.clear = clear  # type: ignore
 
     return cache_wrapper
 
@@ -184,8 +189,6 @@ def _make_value_key(
             continue
         elif arg_name == "cls":
             _LOGGER.debug("Not hashing object type (%s)", arg_name)
-        else:
-            _LOGGER.debug("Hashing arg '%s' of type %s", arg_name, type(arg_value))
         try:
             update_hash(
                 (arg_name, arg_value),
@@ -262,3 +265,30 @@ def _get_positional_arg_name(func: types.FunctionType, arg_index: int) -> Option
         return params[arg_index].name
 
     return None
+
+
+def wrap_sync(
+    cached_func: CachedFunction,
+    *args: Any,
+    **kwargs: Any
+) -> Any:
+    """Wraps a sync function to be cached."""
+    wrapped = create_cache_wrapper(cached_func)
+    return wrapped(*args, **kwargs)
+
+
+async def wrap_async(
+    cached_func: CachedFunction,
+    *args: Any,
+    **kwargs: Any
+) -> Any:
+    """Wraps an async function to be cached."""
+    wrapped = create_cache_wrapper(cached_func)
+    return await wrapped(*args, **kwargs)
+
+
+def procedural_clear(cached_func: CachedFunction) -> None:
+    """Procedurally clear a Cache instance."""
+    function_key = _make_function_key(cached_func.cache_type, cached_func.func)
+    cache = cached_func.get_function_cache(function_key=function_key)
+    cache.clear()

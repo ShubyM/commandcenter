@@ -4,7 +4,8 @@ import contextlib
 import logging
 import re
 from collections import deque
-from typing import AsyncGenerator, Deque, Optional, Sequence
+from collections.abc import Sequence
+from typing import AsyncGenerator, Deque
 
 from bonsai import LDAPClient, LDAPConnection, LDAPSearchScope
 from bonsai.errors import AuthenticationError
@@ -70,8 +71,8 @@ def get_pools(
     mechanism: str,
     maxconn: int,
     tls: bool = False,
-    username: Optional[str] = None,
-    password: Optional[str] = None,
+    username: str | None = None,
+    password: str | None = None,
 ) -> Deque[ConnectionPool]:
     """Get all connection pools for the number of domain controllers there are."""
     pools = deque()
@@ -122,8 +123,8 @@ class ActiveDirectoryClient(AuthenticationClient):
     """
     def __init__(
         self,
-        domain: Optional[str] = None,
-        hosts: Optional[Sequence[str]] = None,
+        domain: str | None = None,
+        hosts: Sequence[str] | None = None,
         tls: bool = False,
         maxconn: int = 4,
         mechanism: str = "GSSAPI",

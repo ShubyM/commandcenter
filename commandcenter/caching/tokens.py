@@ -2,6 +2,8 @@ from typing import Any, Optional, Protocol
 
 from pydantic import BaseModel
 
+from commandcenter.caching.memo import memo
+
 
 
 class ReferenceToken(BaseModel):
@@ -16,7 +18,7 @@ class Tokenable(Protocol):
         """Return a token uniquely identifying this model."""
 
 
-@memo(persist=True)
+@memo(backend="disk")
 def cache_tokenable(
     token: str,
     _obj: Optional[Tokenable] = None

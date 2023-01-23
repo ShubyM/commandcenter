@@ -1,4 +1,4 @@
-from typing import Optional, Set
+from typing import Set
 
 from pydantic import Field
 
@@ -32,10 +32,10 @@ class ActiveDirectoryUser(BaseUser):
     username: LDAPItem = Field(alias="cn")
     first_name: LDAPItem = Field(alias="givenName")
     last_name: LDAPItem = Field(alias="sn")
-    email: Optional[LDAPItem] = Field(alias="mail", default=None)
-    upi: Optional[LDAPItem] = Field(alias="employeeNumber", default=None)
-    company: Optional[LDAPItem] = Field(default=None)
-    country: Optional[LDAPItem] = Field(alias="c", default=None)
+    email: LDAPItem | None = Field(alias="mail", default=None)
+    upi: LDAPItem | None = Field(alias="employeeNumber", default=None)
+    company: LDAPItem | None = Field(default=None)
+    country: LDAPItem | None = Field(alias="c", default=None)
     
     @property
     def display_name(self) -> str:

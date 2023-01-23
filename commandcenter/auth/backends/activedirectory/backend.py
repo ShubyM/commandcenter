@@ -7,6 +7,7 @@ from starlette.authentication import AuthCredentials, AuthenticationError
 from starlette.requests import HTTPConnection
 
 from commandcenter.auth.base import BaseAuthenticationBackend
+from commandcenter.auth.backends.activedirectory.client import ActiveDirectoryClient
 from commandcenter.auth.backends.activedirectory.user import ActiveDirectoryUser
 
 

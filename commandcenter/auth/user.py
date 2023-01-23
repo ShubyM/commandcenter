@@ -1,4 +1,4 @@
-from typing import Optional, Set
+from typing import Set
 
 from pydantic import BaseModel
 from starlette.authentication import BaseUser as StarletteBaseUser
@@ -8,13 +8,13 @@ from starlette.authentication import BaseUser as StarletteBaseUser
 class BaseUser(BaseModel, StarletteBaseUser):
     """Base model for all commandcenter users."""
     username: str
-    first_name: Optional[str]
-    last_name: Optional[str]
-    email: Optional[str]
-    upi: Optional[int]
-    company: Optional[str]
-    country: Optional[str]
-    scopes: Optional[Set[str]]
+    first_name: str | None
+    last_name: str | None
+    email: str | None
+    upi: int | None
+    company: str | None
+    country: str | None
+    scopes: Set[str] | None
 
     @property
     def is_authenticated(self) -> bool:
