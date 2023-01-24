@@ -17,11 +17,11 @@ class AuthenticationClient(Protocol):
         """
         ...
     
-    async def get_user(self, identifier: str) -> BaseUser:
+    async def get_user(self, username: str) -> BaseUser:
         """Retrieve user information from an authority.
         
         Args:
-            identifier: Unique identifier for user.
+            username: Username.
         
         Returns:
             user: `BaseUser` with populated user information.

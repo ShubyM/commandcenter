@@ -12,10 +12,15 @@ import warnings
 from datetime import timedelta
 from typing import Any, Callable, Dict, Optional, Type, TypeVar
 
+try:
+    from redis import Redis
+except ImportError:
+    pass
+
 from commandcenter.caching.core.cache import (
     Cache,
     CachedFunction,
-    procedural_clear,
+    clear_cached_func,
     wrap_async,
     wrap_sync
 )
@@ -25,7 +30,7 @@ from commandcenter.caching.core.caches import (
     RedisCache
 )
 from commandcenter.caching.core.util import CacheType
-from commandcenter.util import ObjSelection
+from commandcenter.util.enums import ObjSelection
 from commandcenter.__version__ import __title__ as DIR_NAME
 
 
@@ -152,7 +157,6 @@ class MemoCaches:
         return False
 
 
-# Singleton MemoCaches instance
 _memo_caches = MemoCaches()
 
 
@@ -164,12 +168,6 @@ def make_cache_path(cache_dir: pathlib.Path) -> bool:
         return False
     else:
         return True
-
-
-try:
-    from redis import Redis
-except ImportError:
-    pass
 
 
 class MemoAPI:
@@ -208,12 +206,15 @@ class MemoAPI:
                 default is None. For the "disk" and "redis" backends, an in memory
                 cache is used and capped at 100 entries for performance. You can
                 disable the in memory buffer by setting `max_entrie` to 0
-            ttl: The maximum number of seconds to keep an entry in the cache, or
-                None if cache entries should not expire. The default is None.
-                For the "disk" and "redis" backends, an in memory cache is used
-                to buffer some values for performance. For "disk" caches, the
-                TTL applies only to the memory buffer. For "redis" caches, the
-                TTL still applies.
+            ttl: The maximum number of seconds to keep an entry in the cache.
+                For the "disk" backend, this only applies to the in memory buffer.
+                If using the "redis" backend, ttl cannont be `None`, if `None`
+                it defaults to 86400 seconds
+
+        Note: You should always call `memo.clear()` when your appication shuts
+        down. This will clear all disk cache files. Its less important with
+        "memory" and "redis" backends due to the way those backends works but
+        its good practice none the less.
 
         Examples:
         >>> @memo
@@ -275,7 +276,8 @@ class MemoAPI:
         >>> another_connection = make_database_connection()
         >>> d2 = fetch_and_clean_data(another_connection, num_rows=10)
         
-        A memoized function's cache can be procedurally cleared...
+        A memoized function's cache can be procedurally cleared (only for "memory"
+        backend)...
         ... @memo
         ... def fetch_and_clean_data(_db_connection, num_rows):
         ...     # Fetch data from _db_connection here, and then clean it up.
@@ -317,6 +319,8 @@ class MemoAPI:
         if isinstance(ttl, timedelta):
             ttl_seconds = ttl.total_seconds()
         else:
+            if backend is caches.REDIS and ttl is None:
+                ttl = 86400
             ttl_seconds = ttl
 
         backend_kwargs.update(
@@ -333,7 +337,7 @@ class MemoAPI:
                     partial = functools.partial(wrap_async, cached_func)
                 else:
                     partial = functools.partial(wrap_sync, cached_func)
-                partial.clear = functools.partial(procedural_clear, cached_func)
+                partial.clear = functools.partial(clear_cached_func, cached_func)
                 if ttl_seconds is None or ttl_seconds > 31536000 or backend is caches.DISK:
                     partial.ttl = 31536000
                 else:
@@ -347,7 +351,7 @@ class MemoAPI:
                 partial = functools.partial(wrap_async, cached_func)
             else:
                 partial = functools.partial(wrap_sync, cached_func)
-            partial.clear = functools.partial(procedural_clear, cached_func)
+            partial.clear = functools.partial(clear_cached_func, cached_func)
             return partial
 
     @staticmethod

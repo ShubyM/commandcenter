@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, Optional, TypeVar
 from commandcenter.caching.core.cache import (
     Cache,
     CachedFunction,
-    procedural_clear,
+    clear_cached_func,
     wrap_async,
     wrap_sync
 )
@@ -62,6 +62,7 @@ class SingletonCaches(Iterable[Any]):
         with self._caches_lock:
             cache = self._function_caches.get(key)
             if cache is not None:
+                assert cache._execution_lock is not None
                 return cache
 
             # Create a new cache object and put it in our dict
@@ -91,7 +92,6 @@ class SingletonCaches(Iterable[Any]):
                         yield obj
 
 
-# Singleton SingletonCaches instance
 _singleton_caches = SingletonCaches()
 
 
@@ -111,7 +111,7 @@ class SingletonAPI:
     """
     F = TypeVar("F", bound=Callable[..., Any])
 
-    def __call__(self, func: Optional[F] = None):
+    def __call__(self, func: F | None = None):
         """Function decorator to store singleton objects.
         
         Each singleton object is shared across all threads in the application.
@@ -173,7 +173,7 @@ class SingletonAPI:
                     partial = functools.partial(wrap_async, cached_func)
                 else:
                     partial = functools.partial(wrap_sync, cached_func)
-                partial.clear = functools.partial(procedural_clear, cached_func)
+                partial.clear = functools.partial(clear_cached_func, cached_func)
                 return partial
             return decorator
         
@@ -183,7 +183,7 @@ class SingletonAPI:
                 partial = functools.partial(wrap_async, cached_func)
             else:
                 partial = functools.partial(wrap_sync, cached_func)
-            partial.clear = functools.partial(procedural_clear, cached_func)
+            partial.clear = functools.partial(clear_cached_func, cached_func)
             return partial
 
     @staticmethod

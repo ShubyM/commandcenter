@@ -1,6 +1,10 @@
-from .collection import TimeseriesCollection, TimeseriesCollectionView, timeseries_collection
-from .series import Timeseries
+from .collection import (
+    TimeseriesCollection,
+    TimeseriesCollectionView,
+    timeseries_collection
+)
 from .exceptions import ChunkLimitError, OldTimestampError
+from .timeseries import Timeseries
 
 
 

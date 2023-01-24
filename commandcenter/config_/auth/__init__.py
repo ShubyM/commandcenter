@@ -3,7 +3,7 @@ import secrets
 from starlette.config import Config
 from starlette.datastructures import Secret
 
-from commandcenter.auth.backends import AuthBackends
+from commandcenter.core.auth.backends import AvailableBackends
 
 
 
@@ -26,6 +26,6 @@ CC_AUTH_ALGORITHM = config(
 )
 CC_AUTH_BACKEND = config(
     "CC_AUTH_BACKEND",
-    cast=lambda v: AuthBackends(v).cls,
-    default=AuthBackends.DEFAULT.value
+    cast=lambda v: AvailableBackends(v).cls,
+    default=AvailableBackends.DEFAULT.value
 )

@@ -16,9 +16,9 @@ from typing import (
     Union,
 )
 
-from commandcenter.core.integrations.models import BaseSubscription
-from commandcenter.core.timeseries.chunks import Chunk, TimeChunk
-from commandcenter.core.timeseries.exceptions import ChunkLimitError
+from commandcenter.integrations.models import BaseSubscription
+from commandcenter.timeseries.chunks import Chunk, TimeChunk
+from commandcenter.timeseries.exceptions import ChunkLimitError
 
 
 

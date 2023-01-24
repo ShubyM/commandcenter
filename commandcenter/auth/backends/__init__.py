@@ -1,5 +1,5 @@
 from commandcenter.auth.backends.activedirectory import ActiveDirectoryBackend
-from commandcenter.util import ObjSelection
+from commandcenter.util.enums import ObjSelection
 
 
 

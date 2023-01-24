@@ -6,7 +6,7 @@ import subprocess
 import timeit
 from typing import List, Tuple
 
-from commandcenter.auth.backends.activedirectory.exceptions import NoHosts
+from commandcenter.auth.backends.activedirectory.exceptions import NoHostsFound
 
 
 
@@ -89,7 +89,7 @@ def discover_domain_controllers(
     
     hosts = list_domain_controllers()
     if not hosts:
-        raise NoHosts(domain)
+        raise NoHostsFound(domain)
 
     _LOGGER.info("Discovered %i hosts for %s", len(hosts), domain)
 

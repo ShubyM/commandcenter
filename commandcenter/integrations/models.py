@@ -5,7 +5,7 @@ from typing import List, Sequence, Set
 import orjson
 from pydantic import BaseModel, validator
 
-from commandcenter.util import json_loads
+from commandcenter.util.serialization import json_loads
 from commandcenter.sources import AvailableSources
 from commandcenter.caching.tokens import ReferenceToken, Tokenable
 
@@ -17,12 +17,10 @@ class HashableModel(BaseModel):
     Models must json encode/decode(able). Hashes for use the JSON string
     representation of the object and are consistent across runtimes.
 
-    Hashing:
-        The models are hashed using the JSON string representation of the model.
-        The `dict()` representation of the model is sorted alphanumerically by
-        field name and then converted to JSON. The hashing algorithm used is
-        SHAKE 128 with a 16 byte length. Finally, the hex digest is converted
-        to an integer.
+    Hashing: The `dict()` representation of the model is sorted alphanumerically
+    by field name and then converted to JSON. The hashing algorithm used is
+    SHAKE 128 with a 16 byte length. Finally, the hex digest is converted
+    to an integer.
     """
     class Config:
         frozen=True

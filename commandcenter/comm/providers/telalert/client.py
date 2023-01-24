@@ -7,12 +7,13 @@ from typing import List
 
 import anyio
 
-from commandcenter.core.comm.providers.telalert.models import TelAlertMessage
-from commandcenter.core.util.process import run_subprocess
+from commandcenter.comm.providers.telalert.models import TelAlertMessage
+from commandcenter.util.process import run_subprocess
 
 
 
-_LOGGER = logging.getLogger("commandcenter.core.comm.providers.telalert")
+_LOGGER = logging.getLogger("commandcenter.comm.providers.telalert")
+
 
 class TelAlertClient:
     """Client for sending alerts through the TelAlert system.

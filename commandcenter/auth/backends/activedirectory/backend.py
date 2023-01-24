@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Tuple, cast
+from typing import Tuple
 
 from bonsai.errors import LDAPError
 from fastapi.security.utils import get_authorization_scheme_param
@@ -7,7 +7,6 @@ from starlette.authentication import AuthCredentials, AuthenticationError
 from starlette.requests import HTTPConnection
 
 from commandcenter.auth.base import BaseAuthenticationBackend
-from commandcenter.auth.backends.activedirectory.client import ActiveDirectoryClient
 from commandcenter.auth.backends.activedirectory.user import ActiveDirectoryUser
 
 
@@ -29,15 +28,13 @@ class ActiveDirectoryBackend(BaseAuthenticationBackend):
     async def authenticate(
         self,
         conn: HTTPConnection
-    ) -> Optional[Tuple[AuthCredentials, ActiveDirectoryUser]]:
+    ) -> Tuple[AuthCredentials, ActiveDirectoryUser] | None:
         """Extract bearer token from authorization header and retrieve user entry
         from active directory.
 
         Raises:
             AuthenticationError: An error occurred during the AD lookup.
         """
-        client = cast(ActiveDirectoryClient, self.client)
-
         authorization = conn.headers.get("Authorization")
         if not authorization:
             return
@@ -57,9 +54,9 @@ class ActiveDirectoryBackend(BaseAuthenticationBackend):
                 self.client.rotate()
                 _LOGGER.warning("Rotating client", exc_info=True)
                 continue
-            except Exception as err:
+            except Exception as e:
                 _LOGGER.error("An unhandled error occurred", exc_info=True)
-                raise AuthenticationError("An unhandled error occurred.") from err
+                raise AuthenticationError("An unhandled error occurred.") from e
             else:
                 return AuthCredentials(user.scopes), user
         else:

@@ -6,7 +6,7 @@ class AuthError(CommandCenterException):
     """Base exception for all auth errors."""
 
 
-class NotFound(AuthError):
+class UserNotFound(AuthError):
     """Raised when a user is not found in the backend database."""
     def __init__(self, username: str) -> None:
         self.username = username

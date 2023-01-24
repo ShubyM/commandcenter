@@ -16,7 +16,7 @@ from commandcenter.auth.backends.activedirectory.discovery import (
     discover_domain_controllers
 )
 from commandcenter.auth.backends.activedirectory.user import ActiveDirectoryUser
-from commandcenter.auth.exceptions import NotFound
+from commandcenter.auth.exceptions import UserNotFound
 from commandcenter.auth.protocols import AuthenticationClient
 
 
@@ -113,8 +113,8 @@ class ActiveDirectoryClient(AuthenticationClient):
 
     Raises:
         LDAPError: Error in LDAPClient when trying to get the rootDSE.
-        OSError: `discover_domain` or `discover_domain_controllers` failed
-        NoHosts: No hosts found with `discover_domain_controllers`
+        OSError: `discover_domain` or `discover_domain_controllers` failed.
+        NoHostsFound: No hosts found with `discover_domain_controllers`.
         ValueError: Invalid authentication mechanism.
 
     Note: Bonsai does not support the `ProacterEventLoop` therefore we run
@@ -257,7 +257,7 @@ class ActiveDirectoryClient(AuthenticationClient):
             )
             
             if len(results) < 1:
-                raise NotFound()
+                raise UserNotFound()
             # sAMAccount name must be unique
             assert len(results) == 1
             

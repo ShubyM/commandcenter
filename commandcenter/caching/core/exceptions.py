@@ -1,5 +1,5 @@
 import types
-from typing import Any, Optional
+from typing import Any
 
 from commandcenter.caching.core.util import (
     get_cached_func_name,
@@ -42,7 +42,7 @@ class UnhashableParamError(CachingException):
     def __init__(
         self,
         func: types.FunctionType,
-        arg_name: Optional[str],
+        arg_name: str | None,
         arg_value: Any,
         orig_exc: BaseException,
     ):
@@ -53,7 +53,7 @@ class UnhashableParamError(CachingException):
     @staticmethod
     def _create_message(
         func: types.FunctionType,
-        arg_name: Optional[str],
+        arg_name: str | None,
         arg_value: Any,
     ) -> str:
         arg_name_str = arg_name if arg_name is not None else "(unnamed)"

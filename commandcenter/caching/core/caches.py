@@ -6,9 +6,14 @@ import pickle
 import threading
 import time
 from collections.abc import Iterable
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict
 
 from cachetools import TTLCache
+try:
+    from redis import Redis
+    from redis.exceptions import RedisError
+except ImportError:
+    pass
 
 from commandcenter.caching.core.cache import Cache
 from commandcenter.caching.core.exceptions import CacheError, CacheKeyNotFoundError
@@ -131,7 +136,6 @@ class DiskCache(MemoCache):
     ):
         super().__init__(key, max_entries, ttl, display_name)
         self._cache_dir = cache_dir
-        self._disk_keys: List[key] = []
 
     @property
     def cache_dir(self) -> pathlib.Path:
@@ -168,17 +172,6 @@ class DiskCache(MemoCache):
         self._write_to_mem_cache(key, pickled_entry)
         self._write_to_disk_cache(key, pickled_entry)
 
-    def clear(self) -> None:
-        """Clear all values from this function cache."""
-        with self._mem_cache_lock:
-            # We keep a lock for the entirety of the clear operation to avoid
-            # disk cache race conditions.
-            for key in self._disk_keys:
-                self._remove_from_disk_cache(key)
-
-            self._mem_cache.clear()
-            self._disk_keys.clear()
-
     def _read_from_disk_cache(self, key: str) -> bytes:
         path = self._get_file_path(key)
         try:
@@ -202,28 +195,6 @@ class DiskCache(MemoCache):
                 # If we can't remove the file, it's not a big deal.
                 pass
             raise CacheError("Unable to write to cache") from e
-        else:
-            self._disk_keys.append(key)
-
-    def _remove_from_disk_cache(self, key: str) -> None:
-        """Delete a cache file from disk. If the file does not exist on disk,
-        return silently.
-        
-        If another exception occurs, log it. Does not throw.
-        """
-        path = self._get_file_path(key)
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
-        except Exception as ex:
-            _LOGGER.exception(
-                "Unable to remove a file from the disk cache", exc_info=ex
-            )
-        else:
-            _LOGGER.debug("Removed files for disk cache %s", self.key)
-        finally:
-            self._disk_keys.clear()
 
     def _get_file_path(self, value_key: str) -> pathlib.Path:
         """Return the path of the disk cache file for the given value."""
@@ -234,13 +205,6 @@ class DiskCache(MemoCache):
             self.clear()
         except:
             pass
-
-
-try:
-    from redis import Redis
-    from redis.exceptions import RedisError
-except ImportError:
-    pass
 
 
 class RedisCache(MemoCache):
@@ -262,7 +226,6 @@ class RedisCache(MemoCache):
         self._redis = redis
         self._enabled = True
         self._ping()
-        self._redis_keys: List[str] = []
 
     @property
     def redis(self) -> "Redis":
@@ -301,11 +264,6 @@ class RedisCache(MemoCache):
         if self._enabled:
             self._write_to_redis_cache(key, pickled_entry)
 
-    def clear(self) -> None:
-        """Clear all values from this function cache."""
-        self._mem_cache.clear()
-        self._remove_from_redis_cache()
-
     def _ping(self) -> None:
         try:
             pong = self.redis.ping()
@@ -329,7 +287,7 @@ class RedisCache(MemoCache):
             self._ping()
             raise CacheError("Unable to read from cache.") from e
         except Exception as e:
-            _LOGGER.error(e)
+            _LOGGER.error("Unhandled exception in redis get", exc_info=True)
             raise CacheError("Unable to read from cache.") from e
         if not value:
             raise CacheKeyNotFoundError("Key not found in Redis cache.")
@@ -345,34 +303,10 @@ class RedisCache(MemoCache):
             self._ping()
             raise CacheError("Unable to write to cache.") from e
         except Exception as e:
-            _LOGGER.error(e)
+            _LOGGER.error("Unhandled exception in redis set", exc_info=True)
             raise CacheError("Unable to write to cache.") from e
         if not value:
             raise CacheError("Unable to write to cache.")
-        else:
-            self._redis_keys.append(key)
-
-    def _remove_from_redis_cache(self) -> None:
-        """Delete a cache key from Redis. If the cache key does not exist,
-        return silently.
-        
-        If another exception occurs, log it. Does not throw.
-        """
-        if self._redis_keys:
-            try:
-                # Even if we are not `_enabled` we want to make a best effort to
-                # delete the keys if ttl is None so we dont leave anything lingering
-                if self._redis_ttl is None or self._enabled:
-                    value = self.redis.delete(*self._redis_keys)
-            except RedisError:
-                pass
-            except Exception:
-                _LOGGER.exception(
-                    "Unahndled exception in redis", exc_info=True
-                )
-            finally:
-                self._redis_keys.clear()
-            _LOGGER.debug("Removed %i keys matching %s", value, self.key)
 
     def _get_redis_key(self, value_key: str) -> str:
         return f"{self.key}-{value_key}"

@@ -4,7 +4,6 @@ from types import TracebackType
 from typing import (
     Any,
     AsyncIterable,
-    Optional,
     Protocol,
     Sequence,
     Set,
@@ -12,11 +11,11 @@ from typing import (
 )
 
 from commandcenter.integrations.models import BaseSubscription, ErrorMessage
-from commandcenter.integrations.types import TimeseriesRow
+from commandcenter.types import TimeseriesRow
 
 
 
-class IntegrationClient(Protocol):
+class Client(Protocol):
     """Standard protocol for all real-time integration client instances.
     
     A client manages a pool of connections to a data source. It behaves as a
@@ -109,8 +108,8 @@ class IntegrationClient(Protocol):
         """
         ...
 
-    def connection_lost(self, connection: "IntegrationConnection") -> None:
-        """Callback for `IntegrationConnections` after they have stopped.
+    def connection_lost(self, fut: asyncio.Future) -> None:
+        """Callback after connections have stopped.
         
         If the connection stopped due to an unhandled exception, the exception
         *must* be packaged into an `ErrorMessage` and placed in the errors queue
@@ -119,7 +118,7 @@ class IntegrationClient(Protocol):
         ...
 
 
-class IntegrationConnection(Protocol):
+class Connection(Protocol):
     """Standard protocol for all real-time integration connection instances.
     
     A connection is where the actual I/O to a source occurs. A connection should
@@ -133,19 +132,6 @@ class IntegrationConnection(Protocol):
         """`True` if the connection is active."""
         ...
     
-    def connection_lost(self, fut: asyncio.Future) -> None:
-        """Callback method that *must* be called when the connection stops. This
-        should set any states or exception propertys then call the client's
-        connection lost method.
-        """
-        ...
-
-    def stop(self) -> None:
-        """Stop the connection. This method is idempotent, multiple calls to
-        `stop` will have no effect.
-        """
-        ...
-    
     def toggle(self) -> None:
         """Toggle the status of the connection.
         
@@ -154,25 +140,26 @@ class IntegrationConnection(Protocol):
         """
         ...
 
-    async def run(self) -> None:
-        """Main task of `IntegrationConnection`.
+    async def run(self, *args: Any, **kwargs: Any) -> None:
+        """Main implementation for the connection.
         
-        This task is started in the background by the `start` method. It should
-        receive/retrieve, parse, and validate data from the source which it is
-        connecting to.
+        This method should receive/retrieve, parse, and validate data from the
+        source which it is connecting to.
         
         When the connection status is 'online' data may be passed to the client.
-        
-        This method must raise `asyncio.CancelledError` when cancelled. The exception
-        may be caught in order to clean up resources but it must re-raised.
         """
         ...
 
-    async def start(self, subscriptions: Set[BaseSubscription]) -> None:
-        """Start the `run` task in the backgorund.
+    async def start(
+        self,
+        subscriptions: Set[BaseSubscription],
+        *args: Any,
+        **kwargs: Any
+    ) -> None:
+        """Start the connection. This is called as a task by the client.
 
         This method may perform any intial connection setup to the data source
-        before starting the task.
+        before awaiting the `run` method.
         
         Any exceptions raised in the `start` method should not be suppressed,
         they will be handled in the client.
@@ -183,15 +170,14 @@ class IntegrationConnection(Protocol):
         ...
 
 
-
-class IntegrationManager(Protocol):
+class Manager(Protocol):
     """Standard protocol for all manager integrations.
     
     A manager bridges the gap between a client integration, which retrieves data
     from a source, and a subscriber, the consumer of the data.
     
     Managers are designed to support any client instance which implements the
-    `IntegrationClient` interfaces.
+    `Client` interfaces.
     
     Managers are similar to fanout exchange where a client is a publisher and
     manager distributes published messages to all subscribers.
@@ -214,7 +200,7 @@ class IntegrationManager(Protocol):
     async def subscribe(
         self,
         subscriptions: Sequence[BaseSubscription]
-    ) -> "IntegrationSubscriber":
+    ) -> "Subscriber":
         """Subscribe to the subscriptions on the client and configure a subscriber.
         
         If the subscription process on the client fails, this *must* raise a
@@ -224,18 +210,12 @@ class IntegrationManager(Protocol):
         support another subscriber. If it cannot, it *must* raise a `CapacityError`
         """
         ...
-
-    def subscriber_lost(self, subscriber: "IntegrationSubscriber") -> None:
-        """Callback for a subscriber after their `stop` method was called.
-        
-        At a minumum, this *must* remove the subscriber from the active subscribers
-        for the manager. It *should* signal other tasks to check the client and see
-        if its subscriptions are still required.
-        """
-        ...
+    
+    def subscriber_lost(self, fut: asyncio.Future) -> None:
+        """Callback after subscribers have stopped."""
 
 
-class IntegrationSubscriber(Protocol):
+class Subscriber(Protocol):
     """Standard protocol for all subscriber integrations.
     
     Subscribers stream data published to them from a manager. Subscribers are
@@ -278,20 +258,21 @@ class IntegrationSubscriber(Protocol):
     """
 
     @property
+    def subscriptions(self) -> Set[BaseSubscription]:
+        """Return a set of the subscriptions for this subscriber."""
+
+    @property
     def stopped(self) -> bool:
         """`True` if subscriber cannot be iterated over."""
         ...
 
     def stop(self) -> None:
-        """Stop the subscriber.
+        """Stops the subscriber and signal callback back to manager.
         
-        This must signal the manager to drop the subscriber. Any attempt to iterate
-        over the subscriber instance will exhaust the iterator immediately after
-        the stop method has been called.
+        This method should be called when exiting a subscriber context.
         """
-        ...
 
-    def publish(self, data: Any) -> None:
+    def publish(self, data: str) -> None:
         """Publish data to the subscriber.
 
         This method may validate the data from the manager before placing it
@@ -301,29 +282,28 @@ class IntegrationSubscriber(Protocol):
         """
         ...
 
-    async def start(self) -> bool:
+    async def start(self, *args: Any, **kwargs: Any) -> bool:
         """Start the subscriber.
         
-        This method ensures the subscriber can be iterated over and sets up the
-        mechanism for stopping the subscriber during iteration.
+        This method is called as a task by the manager.
         """
 
-    async def __aiter__(self) -> AsyncIterable[str | bytes]:
+    async def __aiter__(self) -> AsyncIterable[str]:
         ...
 
-    def __enter__(self) -> "IntegrationSubscriber":
+    def __enter__(self) -> "Subscriber":
         ...
 
     def __exit__(
         self,
-        exc_type: Optional[Type[BaseException]] = None,
-        exc_value: Optional[BaseException] = None,
-        traceback: Optional[TracebackType] = None,
+        exc_type: Type[BaseException] | None = None,
+        exc_value: BaseException | None = None,
+        traceback: TracebackType | None = None,
     ) -> None:
         ...
 
 
-class IntegrationLock:
+class Lock:
     """Standard protocol for a distributed locking mechanism.
     
     Locks are used in certain manager implementations where multiple processes
@@ -441,7 +421,7 @@ class IntegrationLock:
         ...
 
 
-class AbstractTimeseriesCollection(Protocol):
+class TimeseriesCollection(Protocol):
     """Standard protocol for a timeseries collection which streams timeseries
     data from one or multiple sources.
     
@@ -449,7 +429,7 @@ class AbstractTimeseriesCollection(Protocol):
     responsibility to ensure this. Data is streamed relative to the current time
     (i.e "last 15 minutes" -> timedelta(minutes=15)).
 
-    RedisTimeseries is an example backend for the `AbstractTimeseriesCollection`,
+    RedisTimeseries is an example backend for the `TimeseriesCollection`,
     the collection is simply a conduit for the API calls and data processing to
     stream a collection of timeseries in timestamp aligned rows.
     

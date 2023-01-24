@@ -5,8 +5,7 @@ import inspect
 import logging
 import threading
 import types
-from collections.abc import Coroutine
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Callable, Generator, List, Tuple, Union
 
 from commandcenter.caching.core.exceptions import (
     CacheKeyNotFoundError,
@@ -38,6 +37,9 @@ class Cache:
     def write_result(self, value_key: str, value: Any) -> None:
         """Write a value to the cache, overwriting any existing result that uses
         the value_key.
+
+        Raises:
+            CacheError: Raised if unable to write to cache.
         """
         raise NotImplementedError()
 
@@ -127,6 +129,10 @@ def _read_write_cached_value(
     async wrapper.
 
     The actual function call is handled outside this generator.
+
+    Raises:
+        UnserializableReturnValueError: When a return value from a function
+            cannot be serialized with pickle (only applies to memo caches).
     """
     # Retrieve the function's cache object. We must do this inside the
     # wrapped function, because caches can be invalidated at any time.
@@ -165,7 +171,7 @@ def _make_value_key(
     """
     # Create a (name, value) list of all *args and **kwargs passed to the
     # function.
-    arg_pairs: List[Tuple[Optional[str], Any]] = []
+    arg_pairs: List[Tuple[str | None, Any]] = []
     for arg_idx in range(len(args)):
         arg_name = _get_positional_arg_name(func, arg_idx)
         arg_pairs.append((arg_name, args[arg_idx]))
@@ -229,7 +235,8 @@ def _make_function_key(cache_type: CacheType, func: types.FunctionType) -> str:
         source_code = inspect.getsource(func)
     except OSError as e:
         _LOGGER.debug(
-            "Failed to retrieve function's source code when building its key; falling back to bytecode. err={0}",
+            "Failed to retrieve function's source code when building its key; "
+            "falling back to bytecode. err={0}",
             e,
         )
         source_code = func.__code__.co_code
@@ -244,7 +251,7 @@ def _make_function_key(cache_type: CacheType, func: types.FunctionType) -> str:
     return cache_key
 
 
-def _get_positional_arg_name(func: types.FunctionType, arg_index: int) -> Optional[str]:
+def _get_positional_arg_name(func: types.FunctionType, arg_index: int) -> str | None:
     """Return the name of a function's positional argument.
     
     If arg_index is out of range, or refers to a parameter that is not a
@@ -287,8 +294,8 @@ async def wrap_async(
     return await wrapped(*args, **kwargs)
 
 
-def procedural_clear(cached_func: CachedFunction) -> None:
-    """Procedurally clear a Cache instance."""
+def clear_cached_func(cached_func: CachedFunction) -> None:
+    """Clear a Cache instance."""
     function_key = _make_function_key(cached_func.cache_type, cached_func.func)
     cache = cached_func.get_function_cache(function_key=function_key)
     cache.clear()

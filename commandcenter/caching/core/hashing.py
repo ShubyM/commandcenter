@@ -11,7 +11,7 @@ import threading
 import unittest.mock
 import weakref
 from enum import Enum
-from typing import Any, Dict, List, Optional, Pattern
+from typing import Any, Dict, List, Pattern
 
 from commandcenter.caching.core.exceptions import UnhashableTypeError
 from commandcenter.caching.core.util import CacheType, is_type, repr_
@@ -91,7 +91,7 @@ def int_to_bytes(i: int) -> bytes:
     return i.to_bytes(num_bytes, "little", signed=True)
 
 
-def key_(obj: Optional[Any]) -> Any:
+def key_(obj: Any | None) -> Any:
     """Return key for memoization."""
     if obj is None:
         return None

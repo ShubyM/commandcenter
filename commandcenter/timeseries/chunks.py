@@ -3,7 +3,7 @@ from collections.abc import Iterable, MutableSequence
 from datetime import datetime
 from typing import List, TypeVar, Union
 
-from commandcenter.core.timeseries.exceptions import ChunkLimitError, OldTimestampError
+from commandcenter.timeseries.exceptions import ChunkLimitError, OldTimestampError
 
 
 

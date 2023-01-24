@@ -6,7 +6,7 @@ class ActiveDirectoryError(AuthError):
     """Base exception for AD related errors."""
 
 
-class NoHosts(ActiveDirectoryError):
+class NoHostsFound(ActiveDirectoryError):
     """Raised when no domain server hosts are found for a given domain name."""
     def __init__(self, domain: str) -> None:
         self.domain = domain

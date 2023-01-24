@@ -15,10 +15,10 @@ from typing import (
     cast
 )
 
-from commandcenter.core.integrations.models import BaseSubscription
-from commandcenter.core.integrations.types import TimeseriesRow
-from commandcenter.core.timeseries.chunks import Chunk, TimeChunk
-from commandcenter.core.timeseries.series import Timeseries
+from commandcenter.integrations.models import BaseSubscription
+from commandcenter.timeseries.chunks import Chunk, TimeChunk
+from commandcenter.timeseries.timeseries import Timeseries
+from commandcenter.types import TimeseriesRow
 
 
 
