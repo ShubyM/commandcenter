@@ -5,7 +5,7 @@ from pydantic import BaseModel, root_validator
 
 
 class TelAlertMessage(BaseModel):
-    """Validated model for a TelAlert message."""
+    """Model for a TelAlert message."""
     msg: str
     groups: Optional[Sequence[str]] = None
     destinations: Optional[Sequence[str]] = None

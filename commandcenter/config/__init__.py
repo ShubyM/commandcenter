@@ -1,4 +1,3 @@
-import os
 import pathlib
 
 from starlette.config import Config
@@ -29,6 +28,3 @@ CC_TIMEZONE = config(
     "CC_TIMEZONE",
     default=TIMEZONE
 )
-
-
-os.makedirs(CC_HOME, exist_ok=True)

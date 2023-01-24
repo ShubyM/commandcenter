@@ -6,9 +6,6 @@ from commandcenter.exceptions import CommandCenterException
 
 
 
-_LOGGER = logging.getLogger("commandcenter.util.process")
-
-
 class SubProcessError(CommandCenterException):
     """Base exception for subprocess errors."""
 
@@ -22,7 +19,11 @@ class NonZeroExitCode(SubProcessError):
         return "Process exited with non-zero exit code ({}).".format(self.code)
 
 
-def run_subprocess(command: List[str], raise_non_zero: bool = True) -> None:
+def run_subprocess(
+    command: List[str],
+    logger: logging.Logger,
+    raise_non_zero: bool = True
+) -> None:
     """Run a subprocess and route the `stdout` and `stderr` to the logger.
     
     Stdout is debug information and stderr is warning.
@@ -34,10 +35,10 @@ def run_subprocess(command: List[str], raise_non_zero: bool = True) -> None:
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     ) as process:
         for line in process.stdout.readlines():
-            _LOGGER.debug(line.decode().rstrip("\r\n"))
+            logger.debug(line.decode().rstrip("\r\n"))
         for line in process.stderr.readlines():
-            _LOGGER.warning(line.decode().rstrip("\r\n"))
+            logger.warning(line.decode().rstrip("\r\n"))
     if process.returncode != 0:
-        _LOGGER.warning("Process exited with non-zero exit code (%i)", process.returncode)
+        logger.warning("Process exited with non-zero exit code (%i)", process.returncode)
         if raise_non_zero:
             raise NonZeroExitCode(process.returncode)

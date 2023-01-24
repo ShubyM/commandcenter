@@ -63,9 +63,6 @@ class TelAlertClient:
             groups: The group(s) to send the message to.
             destinations: Individual destinations to send the message to.
             subject: The subject line that appears in email notification destinations.
-
-        Raises
-            ValidationError: Invalid message format.
         """
         commands = []
         msg = msg.msg
@@ -84,4 +81,4 @@ class TelAlertClient:
         """Execute the command in a subprocess."""
         async with self._lock:
             with anyio.fail_after(self._timeout):
-                await anyio.to_thread.run_sync(run_subprocess, command)
+                await anyio.to_thread.run_sync(run_subprocess, command, _LOGGER)

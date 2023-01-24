@@ -79,7 +79,7 @@ class AnySubscription(BaseSubscription):
 
 class ErrorMessage(HashableModel):
     """Standardized error message object."""
-    exc: Exception
+    error: Exception
     subscriptions: Set[BaseSubscription]
 
 

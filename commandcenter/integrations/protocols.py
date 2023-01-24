@@ -122,14 +122,15 @@ class Connection(Protocol):
     """Standard protocol for all real-time integration connection instances.
     
     A connection is where the actual I/O to a source occurs. A connection should
-    abstract away the underlying protocol client.
+    abstract away the underlying protocol from the client.
     
     Connections are always slaves to a client and should never be created outside
     the scope of a client.
     """
+
     @property
-    def running(self) -> bool:
-        """`True` if the connection is active."""
+    def subscriptions(self) -> Set[BaseSubscription]:
+        """Return a set of the subscriptions for this connections."""
         ...
     
     def toggle(self) -> None:
@@ -153,6 +154,7 @@ class Connection(Protocol):
     async def start(
         self,
         subscriptions: Set[BaseSubscription],
+        data_queue: asyncio.Queue,
         *args: Any,
         **kwargs: Any
     ) -> None:
@@ -189,6 +191,10 @@ class Manager(Protocol):
     """
 
     @property
+    def ready(self) -> asyncio.Event:
+        """Awaitable that control flow of tasks in a manager."""
+
+    @property
     def subscriptions(self) -> Set[BaseSubscription]:
         """Return a set of the subscriptions from all subscribers."""
         ...
@@ -213,6 +219,7 @@ class Manager(Protocol):
     
     def subscriber_lost(self, fut: asyncio.Future) -> None:
         """Callback after subscribers have stopped."""
+        ...
 
 
 class Subscriber(Protocol):
@@ -256,21 +263,23 @@ class Subscriber(Protocol):
     ... finally:
     ...     subscriber.stop()
     """
-
-    @property
-    def subscriptions(self) -> Set[BaseSubscription]:
-        """Return a set of the subscriptions for this subscriber."""
-
+    
     @property
     def stopped(self) -> bool:
         """`True` if subscriber cannot be iterated over."""
         ...
 
-    def stop(self) -> None:
+    @property
+    def subscriptions(self) -> Set[BaseSubscription]:
+        """Return a set of the subscriptions for this subscriber."""
+        ...
+
+    def stop(self, e: Exception | None) -> None:
         """Stops the subscriber and signal callback back to manager.
         
         This method should be called when exiting a subscriber context.
         """
+        ...
 
     def publish(self, data: str) -> None:
         """Publish data to the subscriber.
@@ -282,11 +291,12 @@ class Subscriber(Protocol):
         """
         ...
 
-    async def start(self, *args: Any, **kwargs: Any) -> bool:
+    async def start(self, subscriptions: Set[BaseSubscription]) -> None:
         """Start the subscriber.
         
         This method is called as a task by the manager.
         """
+        ...
 
     async def __aiter__(self) -> AsyncIterable[str]:
         ...
@@ -317,12 +327,14 @@ class Lock:
     @property
     def closed(self) -> bool:
         """`True` is lock is closed and cannot be used."""
+        ...
 
     async def close(self) -> None:
         """Release any locked resources and close the lock.
         
         This should only ever be called by the manager instance which owns the lock.
         """
+        ...
 
     async def acquire(self, subscriptions: Sequence[BaseSubscription]) -> Set[BaseSubscription]:
         """Acquire a lock for a subscription tied to an `AbstractClient` instance.
@@ -356,6 +368,7 @@ class Lock:
         Args:
             subscriptions: A sequence of subscriptions to register.
         """
+        ...
 
     async def release(self, subscriptions: Sequence[BaseSubscription]) -> None:
         """Release a lock for a subscription tied this process.
@@ -421,17 +434,17 @@ class Lock:
         ...
 
 
-class TimeseriesCollection(Protocol):
-    """Standard protocol for a timeseries collection which streams timeseries
-    data from one or multiple sources.
+class Collection(Protocol):
+    """Standard protocol for a collection which streams timeseries data from
+    one or multiple sources.
     
     Rows *must* be in monotonically increasing order. It is the implementation's
     responsibility to ensure this. Data is streamed relative to the current time
     (i.e "last 15 minutes" -> timedelta(minutes=15)).
 
-    RedisTimeseries is an example backend for the `TimeseriesCollection`,
-    the collection is simply a conduit for the API calls and data processing to
-    stream a collection of timeseries in timestamp aligned rows.
+    RedisTimeseries is an example backend for a collection. Collections are
+    simply a conduit for the API calls and data processing to stream a timeseries
+    data in timestamp aligned rows.
     
     Collections are intended to be long lived and reusable, they are always
     streaming the data from the source backend relative to when iteration starts.
@@ -440,6 +453,7 @@ class TimeseriesCollection(Protocol):
     @property
     def closed(self) -> bool:
         """`True` if collection is closed and cannot be used."""
+        ...
 
     async def close(self) -> None:
         """Close the collection.
@@ -447,6 +461,7 @@ class TimeseriesCollection(Protocol):
         Outstanding iterators should end and any resources required for the
         collection should be cleaned up.
         """
+        ...
 
     async def __aiter__(self) -> AsyncIterable[TimeseriesRow]:
         ...
