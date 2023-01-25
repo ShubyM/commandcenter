@@ -6,7 +6,7 @@ import subprocess
 import timeit
 from typing import List, Tuple
 
-from commandcenter.auth.backends.activedirectory.exceptions import NoHostsFound
+from commandcenter.exceptions import NoHostsFound
 
 
 
@@ -136,7 +136,7 @@ def get_rtt(
 
 
 class Timer:
-    """A context managed timer for determining RTT"""
+    """A context managed timer for determining RTT."""
     def __init__(self) -> None:
         self.start: float = None
         self.elapsed: float = None

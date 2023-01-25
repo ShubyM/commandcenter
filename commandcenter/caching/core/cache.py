@@ -7,15 +7,14 @@ import threading
 import types
 from typing import Any, Callable, Generator, List, Tuple, Union
 
-from commandcenter.caching.core.exceptions import (
+from commandcenter.caching.core.hashing import update_hash
+from commandcenter.caching.core.util import CacheType
+from commandcenter.exceptions import (
     CacheKeyNotFoundError,
     UnhashableParamError,
     UnhashableTypeError,
     UnserializableReturnValueError
 )
-from commandcenter.caching.core.hashing import update_hash
-from commandcenter.caching.core.util import CacheType
-
 
 
 _LOGGER = logging.getLogger("commandcenter.caching")
@@ -201,8 +200,8 @@ def _make_value_key(
                 hasher=args_hasher,
                 cache_type=cache_type,
             )
-        except UnhashableTypeError as exc:
-            raise UnhashableParamError(func, arg_name, arg_value, exc)
+        except UnhashableTypeError as e:
+            raise UnhashableParamError(func, arg_name, arg_value, e)
 
     value_key = args_hasher.hexdigest()
     _LOGGER.debug("Cache key: %s", value_key)
@@ -295,7 +294,7 @@ async def wrap_async(
 
 
 def clear_cached_func(cached_func: CachedFunction) -> None:
-    """Clear a Cache instance."""
+    """Clear a `Cache` instance."""
     function_key = _make_function_key(cached_func.cache_type, cached_func.func)
     cache = cached_func.get_function_cache(function_key=function_key)
     cache.clear()

@@ -49,7 +49,7 @@ class TokenHandler(BaseModel, JWTTokenHandler):
 
 
 class BaseAuthenticationBackend(AuthenticationBackend):
-    """Standard interface for an authentication backend.
+    """Base class for all authentication backends.
     
     Args:
         handler: A `TokenHandler` for issuing and validating tokens.

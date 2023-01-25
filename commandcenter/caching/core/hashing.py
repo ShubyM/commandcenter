@@ -13,9 +13,8 @@ import weakref
 from enum import Enum
 from typing import Any, Dict, List, Pattern
 
-from commandcenter.caching.core.exceptions import UnhashableTypeError
 from commandcenter.caching.core.util import CacheType, is_type, repr_
-
+from commandcenter.exceptions import UnhashableTypeError
 
 
 # Arbitrary item to denote where we found a cycle in a hashed object.
@@ -284,18 +283,18 @@ class CacheFuncHasher:
             self.update(h, obj.keywords)
             return h.digest()
 
-        elif hasattr(obj, "__cache_key__"):
-            # Non hashable objects can define a __cache_key__ method that returns
+        elif hasattr(obj, "__cache__"):
+            # Non hashable objects can define a __cache__ method that returns
             # a stable key across runs
-            return getattr(obj, "__cache_key__")
+            return getattr(obj, "__cache__")
 
         else:
             # As a last resort, hash the output of the object's __reduce__ method
             h = hashlib.new("md5")
             try:
                 reduce_data = obj.__reduce__()
-            except Exception as ex:
-                raise UnhashableTypeError() from ex
+            except Exception as e:
+                raise UnhashableTypeError() from e
 
             for item in reduce_data:
                 self.update(h, item)

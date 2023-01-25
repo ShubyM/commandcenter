@@ -8,7 +8,7 @@ from aiohttp.helpers import set_result
 from aiohttp.http import HttpProcessingError
 from aiohttp.log import client_logger
 
-from commandcenter.util.http.aiohttp.auth import AuthError, AuthFlow
+from commandcenter.http.aiohttp.auth import AuthError, AuthFlow
 
 
 

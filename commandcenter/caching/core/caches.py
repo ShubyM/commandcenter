@@ -16,7 +16,7 @@ except ImportError:
     pass
 
 from commandcenter.caching.core.cache import Cache
-from commandcenter.caching.core.exceptions import CacheError, CacheKeyNotFoundError
+from commandcenter.exceptions import CacheError, CacheKeyNotFoundError
 
 
 
@@ -60,7 +60,7 @@ class SingletonCache(Cache):
 
 
 class MemoCache(Cache):
-    """Base in memory cache for memoized function caches."""
+    """In memory cache for memoized function caches."""
     def __init__(
         self,
         key: str,
@@ -85,8 +85,8 @@ class MemoCache(Cache):
 
         try:
             return pickle.loads(pickled_entry)
-        except pickle.UnpicklingError as exc:
-            raise CacheError(f"Failed to unpickle {key}.") from exc
+        except pickle.UnpicklingError as e:
+            raise CacheError(f"Failed to unpickle {key}.") from e
 
     def write_result(self, key: str, value: Any) -> None:
         """Write a value and associated messages to the cache.
@@ -95,8 +95,8 @@ class MemoCache(Cache):
         """
         try:
             pickled_entry = pickle.dumps(value)
-        except pickle.PicklingError as exc:
-            raise CacheError(f"Failed to pickle {key}.") from exc
+        except pickle.PicklingError as e:
+            raise CacheError(f"Failed to pickle {key}.") from e
 
         self._write_to_mem_cache(key, pickled_entry)
 
@@ -156,8 +156,8 @@ class DiskCache(MemoCache):
 
         try:
             return pickle.loads(pickled_entry)
-        except pickle.UnpicklingError as exc:
-            raise CacheError(f"Failed to unpickle {key}.") from exc
+        except pickle.UnpicklingError as e:
+            raise CacheError(f"Failed to unpickle {key}.") from e
 
     def write_result(self, key: str, value: Any) -> None:
         """Write a value and associated messages to the cache.
@@ -166,8 +166,8 @@ class DiskCache(MemoCache):
         """
         try:
             pickled_entry = pickle.dumps(value)
-        except pickle.PicklingError as exc:
-            raise CacheError(f"Failed to pickle {key}.") from exc
+        except pickle.PicklingError as e:
+            raise CacheError(f"Failed to pickle {key}.") from e
 
         self._write_to_mem_cache(key, pickled_entry)
         self._write_to_disk_cache(key, pickled_entry)
@@ -200,15 +200,9 @@ class DiskCache(MemoCache):
         """Return the path of the disk cache file for the given value."""
         return self.cache_dir.joinpath(f"./{self.key}-{value_key}.memo")
 
-    def __del__(self):
-        try:
-            self.clear()
-        except:
-            pass
-
 
 class RedisCache(MemoCache):
-    """redis cache for memoized functions caches."""
+    """Redis cache for memoized functions caches."""
     def __init__(
         self,
         key: str,
@@ -247,8 +241,8 @@ class RedisCache(MemoCache):
                 raise
         try:
             return pickle.loads(pickled_entry)
-        except pickle.UnpicklingError as exc:
-            raise CacheError(f"Failed to unpickle {key}.") from exc
+        except pickle.UnpicklingError as e:
+            raise CacheError(f"Failed to unpickle {key}.") from e
 
     def write_result(self, key: str, value: Any) -> None:
         """Write a value and associated messages to the cache.
@@ -257,8 +251,8 @@ class RedisCache(MemoCache):
         """
         try:
             pickled_entry = pickle.dumps(value)
-        except pickle.PicklingError as exc:
-            raise CacheError(f"Failed to pickle {key}.") from exc
+        except pickle.PicklingError as e:
+            raise CacheError(f"Failed to pickle {key}.") from e
 
         self._write_to_mem_cache(key, pickled_entry)
         if self._enabled:
@@ -310,9 +304,3 @@ class RedisCache(MemoCache):
 
     def _get_redis_key(self, value_key: str) -> str:
         return f"{self.key}-{value_key}"
-
-    def __del__(self):
-        try:
-            self.clear()
-        except:
-            pass

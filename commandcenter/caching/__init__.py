@@ -1,14 +1,10 @@
-from .core import *
-from .memo import memo
+from .memo import caches, memo
 from .singleton import iter_singletons, singleton
 
 
 
 __all__ = [
-    "CacheKeyNotFoundError",
-    "CachingException",
-    "UnhashableParamError",
-    "UnhashableTypeError",
+    "caches",
     "memo",
     "iter_singletons",
     "singleton",

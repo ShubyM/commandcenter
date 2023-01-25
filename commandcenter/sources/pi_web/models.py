@@ -7,20 +7,19 @@ import orjson
 from pendulum.datetime import DateTime
 from pydantic import BaseModel, root_validator, validator
 
+from commandcenter.caching.tokens import ReferenceToken, Tokenable
 from commandcenter.integrations.models import (
     BaseSubscription,
     BaseSubscriptionRequest,
     HashableModel
 )
-from commandcenter.core.integrations.util.common import (
+from commandcenter.sources import Sources
+from commandcenter.util import (
     in_timezone,
     isoparse,
     json_loads,
-    to_camel
+    snake_to_camel
 )
-from commandcenter.core.sources import AvailableSources
-from commandcenter.core.util.cache import AbstractTokenGenerator, ReferenceToken
-
 
 
 # TODO: Expand to AF elements and attributes
@@ -51,13 +50,13 @@ class PISubscription(BaseSubscription):
     name: str | None = None
     web_id_type: WebIdType = WebIdType.FULL
     obj_type: PIObjType = PIObjType.POINT
-    source: AvailableSources = AvailableSources.PI_WEB_API
+    source: Sources = Sources.PI_WEB_API
     
-    _obj_type = validator("obj_type", allow_reuse=True)(restrict_obj_type)
+    validator("obj_type", allow_reuse=True)(restrict_obj_type)
 
     @validator("source")
     def _restrict_source(cls, v: str) -> str:
-        if v != AvailableSources.PI_WEB_API:
+        if v != Sources.PI_WEB_API:
             raise ValueError(f"Invalid source '{v}' for {cls.__class__.__name__}")
         return v
 
@@ -75,7 +74,7 @@ class PIObjSearch(HashableModel):
     server: str | None = None
     database: str | None = None
 
-    _obj_type = validator("obj_type", allow_reuse=True)(restrict_obj_type)
+    validator("obj_type", allow_reuse=True)(restrict_obj_type)
     
     def to_subscription(self, web_id: str, name: str) -> PISubscription:
         return PISubscription(
@@ -116,7 +115,8 @@ class PIObjSearchFailed(BaseModel):
     reason: str
 
 
-class PIObjSearchRequest(AbstractTokenGenerator):
+class PIObjSearchRequest(Tokenable):
+    """Model for PI object search requests."""
     search: List[PIObjSearch]
 
     @validator("search")
@@ -236,7 +236,7 @@ class PIBaseChannelMessage(BaseModel):
     ```
     """
     class Config:
-        alias_generator = to_camel
+        alias_generator = snake_to_camel
         extra = 'ignore'
         json_dumps=lambda _obj, default: orjson.dumps(_obj, default=default).decode()
         json_loads = json_loads

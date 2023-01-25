@@ -1,13 +1,14 @@
 import json
 import os
 import pathlib
-import tomllib
 from typing import AsyncGenerator
 
+import toml
 import yaml
 from aiohttp import ClientRequest, ClientResponse
 from aiohttp.connector import Connection
-from commandcenter.util.http.aiohttp.auth import AuthFlow
+
+from commandcenter.http.aiohttp.auth import AuthFlow
 
 
 
@@ -38,7 +39,7 @@ class FileCookieAuthFlow(AuthFlow):
             case ".json":
                 cookies = json.loads(self._path.read_text())
             case ".toml":
-                cookies = tomllib.loads(self._path.read_text())
+                cookies = toml.loads(self._path.read_text())
             case ".yml":
                 cookies = yaml.safe_load(self._path.read_text())
         request.update_cookies(cookies)

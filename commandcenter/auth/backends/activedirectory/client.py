@@ -16,8 +16,8 @@ from commandcenter.auth.backends.activedirectory.discovery import (
     discover_domain_controllers
 )
 from commandcenter.auth.backends.activedirectory.user import ActiveDirectoryUser
-from commandcenter.auth.exceptions import UserNotFound
 from commandcenter.auth.protocols import AuthenticationClient
+from commandcenter.exceptions import UserNotFound
 
 
 

@@ -8,7 +8,7 @@ from typing import List
 import anyio
 
 from commandcenter.comm.providers.telalert.models import TelAlertMessage
-from commandcenter.util.process import run_subprocess
+from commandcenter.util import run_subprocess
 
 
 

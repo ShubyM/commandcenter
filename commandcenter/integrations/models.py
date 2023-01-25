@@ -5,9 +5,9 @@ from typing import List, Sequence, Set
 import orjson
 from pydantic import BaseModel, validator
 
-from commandcenter.util.serialization import json_loads
-from commandcenter.sources import AvailableSources
 from commandcenter.caching.tokens import ReferenceToken, Tokenable
+from commandcenter.sources import Sources
+from commandcenter.util import json_loads
 
 
 
@@ -44,7 +44,7 @@ class BaseSubscription(HashableModel):
     These operators are based on the hash of the model which is critical when
     sorting sequences of mixed subscription types.
     """
-    source: AvailableSources
+    source: Sources
     
     def __eq__(self, __o: object) -> bool:
         if not isinstance(__o, BaseSubscription):
@@ -77,10 +77,10 @@ class AnySubscription(BaseSubscription):
         extra="allow"
 
 
-class ErrorMessage(HashableModel):
-    """Standardized error message object."""
-    error: Exception
+class DroppedConnection(HashableModel):
+    """Message for a dropped connection."""
     subscriptions: Set[BaseSubscription]
+    error: Exception | None
 
 
 class BaseSubscriptionRequest(Tokenable):

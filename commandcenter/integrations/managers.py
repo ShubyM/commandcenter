@@ -5,17 +5,16 @@ from typing import Type
 
 import anyio
 
-from commandcenter.integrations.base import BaseManager
-from commandcenter.integrations.exceptions import (
+from commandcenter.exceptions import (
     ClientClosed,
     ClientSubscriptionError,
     ManagerClosed,
-    SubscriptionError,
     SubscriptionLimitError
 )
+from commandcenter.integrations.base import BaseManager
 from commandcenter.integrations.models import BaseSubscription
 from commandcenter.integrations.protocols import Client, Subscriber
-from commandcenter.util.enums import ObjSelection
+from commandcenter.util import ObjSelection
 
 
 
@@ -23,7 +22,7 @@ _LOGGER = logging.getLogger("commandcenter.integrations.managers")
 
 
 class LocalManager(BaseManager):
-    """A manager designed for single process environments."""
+    """A manager intended for single process environments."""
     def __init__(
         self,
         client: Client,
@@ -32,9 +31,13 @@ class LocalManager(BaseManager):
         maxlen: int = 100
     ) -> None:
         super().__init__(client, subscriber, max_subscribers, maxlen)
-        fut = self.loop.create_task(self.start())
-        self.background.add(fut)
-        fut.add_done_callback(self.background.discard)
+        self._task: asyncio.Task = self.loop.create_task(self.start())
+
+    async def close(self) -> None:
+        task = self._task
+        self._task = None
+        task.cancel()
+        await super().close()
 
     async def subscribe(
         self,
@@ -58,20 +61,21 @@ class LocalManager(BaseManager):
             SubscriptionLimitError: Max number of subscribers reached.
         """
         if self.closed:
-            raise ManagerClosed(self.errors)
+            raise ManagerClosed()
         if len(self.subscribers) >= self.max_subscribers:
             raise SubscriptionLimitError(self.max_subscribers)
-
-        await self.ready.wait()
         
         subscriptions = set(subscriptions)
         
         try:
-            subscribed = await self.client.subscribe(subscriptions)
+            self.client.subscribe(subscriptions)
+        except SubscriptionLimitError:
+            raise
+        except ClientClosed:
+            await self.close()
+            raise ManagerClosed()
         except Exception as e:
             raise ClientSubscriptionError(e) from e
-        if not subscribed:
-            raise SubscriptionError()
 
         subscriber = self.subscriber()
         fut = self.loop.create_task(
@@ -98,27 +102,24 @@ class LocalManager(BaseManager):
                 if not fut.done():
                     subscriber.publish(msg)
 
-    async def _errors(self) -> None:
-        """Retreive errors from the client.
-        
-        If a connection error affects a subscriber, the subscriber will be
-        stopped.
-        """
-        async for e in self.client.errors():
-            subscriptions = e.subscriptions
+    async def _dropped(self) -> None:
+        async for msg in self.client.dropped():
+            subscriptions = msg.subscriptions
             for fut, subscriber in self.subscribers.items():
                 if subscriptions.difference(subscriber.subscriptions) != subscriptions:
                     fut.cancel()
-                    _LOGGER.warning(
-                        "Subscriber stopped due to client connection error",
-                        exc_info=e.error
-                    )
+                    # Theoretically there should always be an error associated
+                    # if we get here
+                    if msg.error:
+                        _LOGGER.warning(
+                            "Subscriber stopped due to client connection error",
+                            exc_info=msg.error
+                        )
+                    # But just in case...
+                    else:
+                        _LOGGER.warning("Subscriber dropped without an error on the client")
 
     async def _poll(self) -> None:
-        """Poll manager subscriptions after a subscriber is lost.
-        
-        Unsubscribe on the client if a subscription is no longer needed.
-        """
         while True:
             await self.subscriber_event.wait()
             try:
@@ -126,28 +127,22 @@ class LocalManager(BaseManager):
                 unubscribe = self.client.subscriptions.difference(subscriptions)
                 if unubscribe:
                     _LOGGER.debug("Unsubscribing from %i subscriptions", len(unubscribe))
-                    fut = self.loop.create_task(self.client.unsubscribe(unubscribe))
-                    self.background.add(fut)
-                    fut.add_done_callback(self.background.discard)
+                    self.client.unsubscribe(unubscribe)
             finally:
                 self.subscriber_event.clear()
 
     async def start(self) -> None:
-        """Start data processing tasks in the background."""
         while True:
             try:
                 async with anyio.create_task_group() as tg:
                     tg.start_soon(self._data())
-                    tg.start_soon(self._errors())
+                    tg.start_soon(self._dropped())
                     tg.start_soon(self._poll())
-                    self.ready.set()
             except ClientClosed:
                 self.loop.create_task(self.close())
                 break
             except Exception:
                 _LOGGER.error("Unhandled error in manager", exc_info=True)
-            finally:
-                self.ready.clear()
 
 
 class Managers(ObjSelection):

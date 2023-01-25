@@ -10,22 +10,11 @@ from typing import (
     Type,
 )
 
-from commandcenter.integrations.models import BaseSubscription, ErrorMessage
-from commandcenter.types import TimeseriesRow
+from commandcenter.integrations.models import BaseSubscription, DroppedConnection
 
 
 
 class Client(Protocol):
-    """Standard protocol for all real-time integration client instances.
-    
-    A client manages a pool of connections to a data source. It behaves as a
-    subscription interface.
-    
-    Managers use client instances to ferry data from the source to a subscriber
-    interested in a particular set of subscriptions. Clients should rarely
-    (if ever) be handled outside the scope of a manager.
-    """
-    
     @property
     def capacity(self) -> int:
         """Return an integer indicating how many more subscriptions this client
@@ -46,99 +35,48 @@ class Client(Protocol):
         ...
     
     async def close(self) -> None:
-        """Close the client instance and shut down all connections.
-        
-        Any resources having to do with underlying I/O transport must be finalized
-        here.
-        """
+        """Close the client instance and shut down all connections."""
         ...
 
-    async def errors(self) -> AsyncIterable[ErrorMessage]:
-        """Receive errors that caused connections to fail.
-        
-        A failed connection equates to a loss of service which the manager
-        must be notified about so that it can shut down any subscribers
-        dependent on those subscriptions.
-        """
-        ...
+    async def dropped(self) -> AsyncIterable[DroppedConnection]:
+        """Receive messages for dropped connections."""
+        yield
 
     async def messages(self) -> AsyncIterable[str]:
-        """Receive incoming messages from all connections.
-        
-        This is the central point for data flow through the client to the manager.
-        The manager has no concept of the underlying workings of the client and
-        its connection structure.
-        """
-        ...
+        """Receive incoming messages from all connections."""
+        yield
 
-    async def subscribe(self, subscriptions: Sequence[BaseSubscription]) -> bool:
-        """Subscribe to subscriptions for a source.
-        
-        This method should create the appropriate number of connections to support
-        all the subscriptions. Also, it *should* not interrupt service for any other
-        subscriptions.
+    def subscribe(self, subscriptions: Sequence[BaseSubscription]) -> None:
+        """Subscribe to a sequence of subscriptions.
 
         Args:
             subscriptions: The subscriptions to subscribe to.
 
         Returns:
             status: A boolean indicating whether or not the operation was
-                successful. If `True`, all subscriptions were successfully
+                successful. If `True`, *all* subscriptions were successfully
                 subscribed, if `False` *none* of the subscriptions were subscribed
                 to.
         """
         ...
 
-    async def unsubscribe(self, subscriptions: Sequence[BaseSubscription]) -> bool:
-        """Unsubscribe from subscriptions for a source.
-        
-        This method should stop the appropriate connections and clean up any
-        resources as needed. However, it *should* not interrupt service (i.e stop
-        connections in use) for any other subscriptions already supported by
-        the client.
+    def unsubscribe(self, subscriptions: Sequence[BaseSubscription]) -> None:
+        """Unsubscribe from from a sequence of subscriptions.
         
         Args:
             subscriptions: The subscriptions to unsubscribe from.
-
-        Returns:
-            status: A boolean indicating whether or not the operation was
-                successful. If `True`, all subscriptions were unsubscribed
-                from, if `False` *none* of the subscriptions were unsubscribed
-                from.
         """
         ...
 
     def connection_lost(self, fut: asyncio.Future) -> None:
-        """Callback after connections have stopped.
-        
-        If the connection stopped due to an unhandled exception, the exception
-        *must* be packaged into an `ErrorMessage` and placed in the errors queue
-        to be picked up by the manager.
-        """
+        """Callback after connections have stopped."""
         ...
 
 
 class Connection(Protocol):
-    """Standard protocol for all real-time integration connection instances.
-    
-    A connection is where the actual I/O to a source occurs. A connection should
-    abstract away the underlying protocol from the client.
-    
-    Connections are always slaves to a client and should never be created outside
-    the scope of a client.
-    """
-
     @property
     def subscriptions(self) -> Set[BaseSubscription]:
         """Return a set of the subscriptions for this connections."""
-        ...
-    
-    def toggle(self) -> None:
-        """Toggle the status of the connection.
-        
-        Only if a connection is an 'on' or 'online' state can it pass data to the
-        client otherwise, the messages *must* be discarded.
-        """
         ...
 
     async def run(self, *args: Any, **kwargs: Any) -> None:
@@ -160,39 +98,19 @@ class Connection(Protocol):
     ) -> None:
         """Start the connection. This is called as a task by the client.
 
-        This method may perform any intial connection setup to the data source
-        before awaiting the `run` method.
-        
-        Any exceptions raised in the `start` method should not be suppressed,
-        they will be handled in the client.
-
         Args:
             subscriptions: A set of subscriptions to connect to at the datasource.
+            data_queue: A queue where processed data is be placed.
         """
         ...
 
 
 class Manager(Protocol):
-    """Standard protocol for all manager integrations.
-    
-    A manager bridges the gap between a client integration, which retrieves data
-    from a source, and a subscriber, the consumer of the data.
-    
-    Managers are designed to support any client instance which implements the
-    `Client` interfaces.
-    
-    Managers are similar to fanout exchange where a client is a publisher and
-    manager distributes published messages to all subscribers.
-
-    The manager-subscriber model abstracts away all the protocol crap from
-    data integrations. It is designed to be a backplane for consistent data
-    structures and allow subscribers streaming from multiple sources to merge
-    those streams in a trivial way.
-    """
-
     @property
     def ready(self) -> asyncio.Event:
-        """Awaitable that control flow of tasks in a manager."""
+        """Awaitable that controls flow based on core background tasks in the
+        manager.
+        """
 
     @property
     def subscriptions(self) -> Set[BaseSubscription]:
@@ -207,13 +125,10 @@ class Manager(Protocol):
         self,
         subscriptions: Sequence[BaseSubscription]
     ) -> "Subscriber":
-        """Subscribe to the subscriptions on the client and configure a subscriber.
+        """Subscribe on the client and configure a subscriber.
         
-        If the subscription process on the client fails, this *must* raise a
-        `SubscriptionError`.
-
-        This method *must* check the capacity of the manager to ensure it can
-        support another subscriber. If it cannot, it *must* raise a `CapacityError`
+        Args:
+            subscriptions: The subscriptions to subscribe to.
         """
         ...
     
@@ -223,47 +138,6 @@ class Manager(Protocol):
 
 
 class Subscriber(Protocol):
-    """Standard protocol for all subscriber integrations.
-    
-    Subscribers stream data published to them from a manager. Subscribers are
-    the final gatekeeper for data integrity and validation. They have two
-    requirements.
-    
-    1. Subscribers *must* ensure timeseries data is in monotonically increasing
-    order.
-    2. Subscribers *must* ensure they only proxy subscriptions which they are
-    responsible for.
-    3. Subscriber *must* ensure they dont send duplicate data. 
-    
-    Depending on the manager implementation, there is no guarentee that
-    a message received in the subscribers queue is intended for this subscriber.
-    There is also no guarentee that a manager will not occassionally send a duplicate
-    message especially in a distributed environment.
-
-    Some manager or client implementations may guarentee monotonically increasing
-    timeseries data. Typically, subscribers are implemented according to the
-    client they will proxy subscriptions for. So subscriber implementation may
-    depend on the client implementation and source.
-    
-    Subscribers are always slaves to a manager and should never be created outside
-    the scope of a manager.
-
-    Examples:
-    The preferred use of a subscriber is with a context manager. This must handle
-    calling the `stop` method at the end of the context block...
-    >>> with await manager.subscribe(...) as subscriber:
-    ...     async for msg in subscriber:
-    ...     ...
-
-    They can also be stopped manually...
-    >>> subscriber = await manager.subscribe(...)
-    >>> try:
-    ...     async for msg in subscriber:
-    ...         ...
-    ... finally:
-    ...     subscriber.stop()
-    """
-    
     @property
     def stopped(self) -> bool:
         """`True` if subscriber cannot be iterated over."""
@@ -275,20 +149,11 @@ class Subscriber(Protocol):
         ...
 
     def stop(self, e: Exception | None) -> None:
-        """Stops the subscriber and signal callback back to manager.
-        
-        This method should be called when exiting a subscriber context.
-        """
+        """Stop the subscriber."""
         ...
 
     def publish(self, data: str) -> None:
-        """Publish data to the subscriber.
-
-        This method may validate the data from the manager before placing it
-        into the data queue.
-
-        This method should only be called by the manager.
-        """
+        """Publish data to the subscriber."""
         ...
 
     async def start(self, subscriptions: Set[BaseSubscription]) -> None:
@@ -314,26 +179,13 @@ class Subscriber(Protocol):
 
 
 class Lock:
-    """Standard protocol for a distributed locking mechanism.
-    
-    Locks are used in certain manager implementations where multiple processes
-    could be streaming the same data. Redis and Memcached are two commonly
-    used backends for distributed locks.
-    
-    This class provides a common set of methods so the locks can be used
-    interchangeably on different managers.
-    """
-
     @property
     def closed(self) -> bool:
         """`True` is lock is closed and cannot be used."""
         ...
 
     async def close(self) -> None:
-        """Release any locked resources and close the lock.
-        
-        This should only ever be called by the manager instance which owns the lock.
-        """
+        """Close the lock."""
         ...
 
     async def acquire(self, subscriptions: Sequence[BaseSubscription]) -> Set[BaseSubscription]:
@@ -431,37 +283,4 @@ class Lock:
             subscriptions: The subscriptions are not being streamed anywhere
                 in the cluster.
         """
-        ...
-
-
-class Collection(Protocol):
-    """Standard protocol for a collection which streams timeseries data from
-    one or multiple sources.
-    
-    Rows *must* be in monotonically increasing order. It is the implementation's
-    responsibility to ensure this. Data is streamed relative to the current time
-    (i.e "last 15 minutes" -> timedelta(minutes=15)).
-
-    RedisTimeseries is an example backend for a collection. Collections are
-    simply a conduit for the API calls and data processing to stream a timeseries
-    data in timestamp aligned rows.
-    
-    Collections are intended to be long lived and reusable, they are always
-    streaming the data from the source backend relative to when iteration starts.
-    """
-
-    @property
-    def closed(self) -> bool:
-        """`True` if collection is closed and cannot be used."""
-        ...
-
-    async def close(self) -> None:
-        """Close the collection.
-        
-        Outstanding iterators should end and any resources required for the
-        collection should be cleaned up.
-        """
-        ...
-
-    async def __aiter__(self) -> AsyncIterable[TimeseriesRow]:
         ...

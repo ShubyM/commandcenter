@@ -30,7 +30,7 @@ from commandcenter.caching.core.caches import (
     RedisCache
 )
 from commandcenter.caching.core.util import CacheType
-from commandcenter.util.enums import ObjSelection
+from commandcenter.util import ObjSelection
 from commandcenter.__version__ import __title__ as DIR_NAME
 
 
@@ -320,6 +320,11 @@ class MemoAPI:
             ttl_seconds = ttl.total_seconds()
         else:
             if backend is caches.REDIS and ttl is None:
+                warnings.warn(
+                    "'ttl' cannot be 'None' when using the redis backend. Setting"
+                    "to 86400 seconds",
+                    stacklevel=2
+                )
                 ttl = 86400
             ttl_seconds = ttl
 

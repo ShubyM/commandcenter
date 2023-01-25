@@ -13,7 +13,7 @@ from aiohttp import ClientRequest, ClientResponse, hdrs
 from aiohttp.connector import Connection
 from aiohttp.log import client_logger
 
-from commandcenter.util.http.aiohttp.auth import AuthFlow
+from commandcenter.http.aiohttp.auth import AuthFlow
 
 
 
