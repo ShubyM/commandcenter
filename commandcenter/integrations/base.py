@@ -3,10 +3,11 @@ import logging
 from collections import deque
 from collections.abc import AsyncIterable, Sequence
 from contextlib import suppress
+from enum import IntEnum
 from types import TracebackType
-from typing import Any, Deque, Dict, List, Set, Type
+from typing import Any, Deque, Dict, Set, Type
 
-from commandcenter.exceptions import ClientClosed
+from commandcenter.exceptions import ClientClosed, DroppedSubscriber
 from commandcenter.integrations.models import BaseSubscription, DroppedConnection
 from commandcenter.integrations.protocols import (
     Client,
@@ -27,10 +28,10 @@ class BaseClient(Client):
         max_buffered_messages: The max length of the data queue for the client.
     """
     def __init__(self, max_buffered_messages: int = 1000) -> None:
-        self.connections: Dict[asyncio.Future, Connection] = {}
-        self.data_queue: asyncio.Queue = asyncio.Queue(maxsize=max_buffered_messages)
-        self.dropped_queue: asyncio.Queue = asyncio.Queue()
-        self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        self._connections: Dict[asyncio.Future, Connection] = {}
+        self._data: asyncio.Queue = asyncio.Queue(maxsize=max_buffered_messages)
+        self._dropped: asyncio.Queue = asyncio.Queue()
+        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
     @property
     def capacity(self) -> int:
@@ -39,7 +40,7 @@ class BaseClient(Client):
     @property
     def subscriptions(self) -> Set[BaseSubscription]:
         subscriptions = set()
-        for fut, connection in self.connections.items():
+        for fut, connection in self._connections.items():
             if not fut.done():
                 subscriptions.update(connection.subscriptions)
         return subscriptions
@@ -49,13 +50,19 @@ class BaseClient(Client):
 
     async def messages(self) -> AsyncIterable[str]:
         while not self.closed:
-            yield await self.data_queue.get()
+            msg = await self._data.get()
+            if self.closed:
+                raise ClientClosed()
+            yield msg
         else:
             raise ClientClosed()
 
     async def dropped(self) -> AsyncIterable[DroppedConnection]:
         while not self.closed:
-            yield await self.dropped_queue.get()
+            msg = await self._dropped.get()
+            if self.closed:
+                raise ClientClosed()
+            yield msg
         else:
             raise ClientClosed()
 
@@ -66,13 +73,18 @@ class BaseClient(Client):
         raise NotImplementedError()
 
     def connection_lost(self, fut: asyncio.Future) -> None:
-        assert fut in self.connections
-        connection = self.connections.pop(fut)
+        assert fut in self._connections
+        connection = self._connections.pop(fut)
         e: Exception = None
         with suppress(asyncio.CancelledError):
             e = fut.exception()
-        msg = DroppedConnection(subscriptions=connection.subscriptions, error=e)
-        self.dropped_queue.put_nowait(msg)
+        # If a connection was cancelled by the client and the subscriptions were
+        # replaced through another connection, subscriptions will be empty set
+        msg = DroppedConnection(
+            subscriptions=connection.subscriptions.difference(self.subscriptions),
+            error=e
+        )
+        self._dropped.put_nowait(msg)
 
     def __del__(self):
         try:
@@ -87,9 +99,13 @@ class BaseClient(Client):
 class BaseConnection(Connection):
     """Base implementation for a connection."""
     def __init__(self) -> None:
-        self.subscriptions: Set[BaseSubscription] = set()
-        self.data_queue: asyncio.Queue = None
-        self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        self._subscriptions: Set[BaseSubscription] = set()
+        self._data: asyncio.Queue = None
+        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+
+    @property
+    def subscriptions(self) -> Set[BaseSubscription]:
+        return self._subscriptions
 
     async def run(self, *args: Any, **kwargs: Any) -> None:
         raise NotImplementedError()
@@ -97,7 +113,7 @@ class BaseConnection(Connection):
     async def start(
         self,
         subscriptions: Set[BaseSubscription],
-        data_queue: asyncio.Queue,
+        data: asyncio.Queue,
         *args: Any,
         **kwargs: Any
     ) -> None:
@@ -125,43 +141,42 @@ class BaseManager(Manager):
         max_subscribers: int = 100,
         maxlen: int = 100
     ) -> None:
-        self.client = client
-        self.subscriber = subscriber
-        self.max_subscribers = max_subscribers
-        self.maxlen = maxlen
+        self._client = client
+        self._subscriber = subscriber
+        self._max_subscribers = max_subscribers
+        self._maxlen = maxlen
 
-        self.closed: bool = False
-        self.subscribers: Dict[asyncio.Task, Subscriber] = {}
-        self.errors: List[Exception] = []
-        self.subscriber_event: asyncio.Event = asyncio.Event()
-        self.ready: asyncio.Event = asyncio.Event()
-        self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        self._closed: bool = False
+        self._subscribers: Dict[asyncio.Task, Subscriber] = {}
+        self._event: asyncio.Event = asyncio.Event()
+        self._ready: asyncio.Event = asyncio.Event()
+        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
     @property
     def subscriptions(self) -> Set[BaseSubscription]:
         subscriptions = set()
-        for fut, subscriber in self.subscribers.items():
+        for fut, subscriber in self._subscribers.items():
             if not fut.done():
                 subscriptions.update(subscriber.subscriptions)
         return subscriptions
 
     async def close(self) -> None:
         self.closed = True
-        for fut in self.subscribers.keys():
+        for fut in self._subscribers.keys():
             fut.cancel()
-        await self.client.close()
+        await self._client.close()
 
     async def subscribe(self, subscriptions: Sequence[BaseSubscription]) -> "Subscriber":
         raise NotImplementedError()
 
     def subscriber_lost(self, fut: asyncio.Future) -> None:
-        assert fut in self.subscribers
-        self.subscribers.pop(fut)
+        assert fut in self._subscribers
+        subscriber = self._subscribers.pop(fut)
         e: Exception = None
         with suppress(asyncio.CancelledError):
             e = fut.exception()
         if e is not None:
-            _LOGGER.warning("Unhandled error in subscriber", exc_info=e)
+            _LOGGER.warning("Unhandled error in %s", subscriber.__class__.__name__, exc_info=e)
 
     def __del__(self):
         try:
@@ -173,6 +188,11 @@ class BaseManager(Manager):
             pass
 
 
+class SubscriberCodes(IntEnum):
+    STOPPED = 1
+    DATA = 2
+
+
 class BaseSubscriber(Subscriber):
     """Base implementation for a subscriber.
     
@@ -181,37 +201,57 @@ class BaseSubscriber(Subscriber):
             If the buffer exceeds `maxlen` the oldest messages are evicted.
     """
     def __init__(self) -> None:
-        self.subscriptions = set()
-        self.data_queue: Deque[str] = None
-        self.data_waiter: asyncio.Future = None
-        self.stop_waiter: asyncio.Future = None
-        self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        self._subscriptions = set()
+        self._data: Deque[str] = None
+        self._data_waiter: asyncio.Future = None
+        self._stop_waiter: asyncio.Future = None
+        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+
+    @property
+    def stopped(self) -> bool:
+        return self._stop_waiter is not None and not self._stop_waiter.done()
 
     def stop(self, e: Exception | None) -> None:
-        waiter = self.stop_waiter
-        self.stop_waiter = None
+        waiter = self._stop_waiter
+        self._stop_waiter = None
         if waiter is not None and not waiter.done():
             if e is not None:
                 waiter.set_exception(e)
             else:
                 waiter.set_result(None)
+        _LOGGER.debug("%s stopped", self.__class__.__name__)
 
     def publish(self, data: str) -> None:
-        self.data_queue.append(data)
-        waiter = self.data_waiter
-        self.data_waiter = None
+        self._data.append(data)
+        waiter = self._data_waiter
+        self._data_waiter = None
         if waiter is not None and not waiter.done():
             waiter.set_result(None)
+        _LOGGER.debug("Message published to %s", self.__class__.__name__)
     
     async def start(self, subscriptions: Set[BaseSubscription], maxlen: int) -> None:
-        assert self.stop_waiter is None
+        assert self._stop_waiter is None
         self.subscriptions.update(subscriptions)
-        waiter = self.loop.create_future()
-        self.stop_waiter = waiter
+        waiter = self._loop.create_future()
+        self._stop_waiter = waiter
 
-        self.data_queue = deque(maxlen=maxlen)
+        self._data = deque(maxlen=maxlen)
 
         await waiter
+
+    async def wait_for_data(self) -> None:
+        stop = self._stop_waiter
+        if stop is None or stop.done():
+            return SubscriberCodes.STOPPED
+        waiter = self._loop.create_future()
+        self._data_waiter = waiter
+        await asyncio.wait([waiter, stop], return_when=asyncio.FIRST_COMPLETED)
+        if not waiter.done(): # Stop called
+            _LOGGER.debug("%s stopped waiting for data", self.__class__.__name__)
+            waiter.cancel()
+            self._data_waiter = None
+            return SubscriberCodes.STOPPED
+        return SubscriberCodes.DATA
 
     def __enter__(self) -> "Subscriber":
         return self
@@ -226,3 +266,13 @@ class BaseSubscriber(Subscriber):
             self.stop(exc_value)
         else:
             self.stop(None)
+
+
+async def iter_subscriber(subscriber: Subscriber) -> AsyncIterable[str]:
+    """Iterates over a subscriber yielding events."""
+    with subscriber:
+        async for msg in subscriber:
+            yield msg
+        else:
+            assert subscriber.stopped
+            raise DroppedSubscriber()

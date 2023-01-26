@@ -7,7 +7,7 @@ import anyio
 
 from commandcenter.exceptions import (
     ClientClosed,
-    ClientSubscriptionError,
+    ClientError,
     ManagerClosed,
     SubscriptionLimitError
 )
@@ -31,12 +31,12 @@ class LocalManager(BaseManager):
         maxlen: int = 100
     ) -> None:
         super().__init__(client, subscriber, max_subscribers, maxlen)
-        self._task: asyncio.Task = self.loop.create_task(self.start())
+        self._runner: asyncio.Task = self._loop.create_task(self._start())
 
     async def close(self) -> None:
-        task = self._task
-        self._task = None
-        task.cancel()
+        fut = self._runner
+        self._runner = None
+        fut.cancel()
         await super().close()
 
     async def subscribe(
@@ -62,76 +62,77 @@ class LocalManager(BaseManager):
         """
         if self.closed:
             raise ManagerClosed()
-        if len(self.subscribers) >= self.max_subscribers:
-            raise SubscriptionLimitError(self.max_subscribers)
+        if len(self._subscribers) >= self._max_subscribers:
+            raise SubscriptionLimitError(self._max_subscribers)
         
         subscriptions = set(subscriptions)
         
         try:
-            self.client.subscribe(subscriptions)
+            self._client.subscribe(subscriptions)
         except SubscriptionLimitError:
             raise
         except ClientClosed:
             await self.close()
             raise ManagerClosed()
         except Exception as e:
-            raise ClientSubscriptionError(e) from e
+            raise ClientError(e) from e
 
-        subscriber = self.subscriber()
-        fut = self.loop.create_task(
+        subscriber = self._subscriber()
+        fut = self._loop.create_task(
             subscriber.start(
                 subscriptions=subscriptions,
-                maxlen=self.maxlen
+                maxlen=self._maxlen
             )
         )
         fut.add_done_callback(self.subscriber_lost)
-        self.subscribers[fut] = subscriber
+        self._subscribers[fut] = subscriber
 
-        _LOGGER.debug("Added subscriber %i of %i", len(self.subscribers), self.max_subscribers)
+        _LOGGER.debug("Added subscriber %i of %i", len(self._subscribers), self._max_subscribers)
         
         return subscriber
 
     def subscriber_lost(self, fut: asyncio.Future) -> None:
         super().subscriber_lost(fut)
-        self.subscriber_event.set()
+        self._event.set()
 
     async def _data(self) -> None:
         """Core task to retrieve data from client and publish it to subscribers."""
-        async for msg in self.client.messages():
-            for fut, subscriber in self.subscribers.items():
+        async for msg in self._client.messages():
+            for fut, subscriber in self._subscribers.items():
                 if not fut.done():
                     subscriber.publish(msg)
 
     async def _dropped(self) -> None:
-        async for msg in self.client.dropped():
+        async for msg in self._client.dropped():
             subscriptions = msg.subscriptions
-            for fut, subscriber in self.subscribers.items():
-                if subscriptions.difference(subscriber.subscriptions) != subscriptions:
-                    fut.cancel()
-                    # Theoretically there should always be an error associated
-                    # if we get here
-                    if msg.error:
-                        _LOGGER.warning(
-                            "Subscriber stopped due to client connection error",
-                            exc_info=msg.error
-                        )
-                    # But just in case...
-                    else:
-                        _LOGGER.warning("Subscriber dropped without an error on the client")
+            if subscriptions:
+                for fut, subscriber in self._subscribers.items():
+                    if subscriptions.difference(subscriber.subscriptions) != subscriptions:
+                        fut.cancel()
+                        # Theoretically there should always be an error associated
+                        # if we get here
+                        if msg.error:
+                            _LOGGER.warning(
+                                "Subscriber stopped due to client connection error",
+                                exc_info=msg.error
+                            )
+                        # But just in case...
+                        else:
+                            _LOGGER.warning("Subscriber dropped without an error on the client")
 
     async def _poll(self) -> None:
         while True:
-            await self.subscriber_event.wait()
+            await self._event.wait()
             try:
                 subscriptions = self.subscriptions
-                unubscribe = self.client.subscriptions.difference(subscriptions)
+                unubscribe = self._client.subscriptions.difference(subscriptions)
                 if unubscribe:
                     _LOGGER.debug("Unsubscribing from %i subscriptions", len(unubscribe))
-                    self.client.unsubscribe(unubscribe)
+                    self._client.unsubscribe(unubscribe)
             finally:
-                self.subscriber_event.clear()
+                self._event.clear()
 
-    async def start(self) -> None:
+    async def _start(self) -> None:
         while True:
             try:
                 async with anyio.create_task_group() as tg:
@@ -139,7 +140,7 @@ class LocalManager(BaseManager):
                     tg.start_soon(self._dropped())
                     tg.start_soon(self._poll())
             except ClientClosed:
-                self.loop.create_task(self.close())
+                self._loop.create_task(self.close())
                 break
             except Exception:
                 _LOGGER.error("Unhandled error in manager", exc_info=True)

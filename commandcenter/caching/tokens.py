@@ -11,11 +11,12 @@ class ReferenceToken(BaseModel):
     token: str
 
 
-class Tokenable(Protocol):
+class Tokenable:
     """Standard model for objects that can be cached by a reference token."""
     @property
     def token(self) -> ReferenceToken:
         """Return a token uniquely identifying this model."""
+        raise NotImplementedError()
 
 
 @memo(backend="disk")

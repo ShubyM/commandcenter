@@ -1,5 +1,5 @@
 from types import FunctionType
-from typing import Any
+from typing import Any, List
 
 from commandcenter.caching.core.util import (
     get_cached_func_name,
@@ -167,7 +167,7 @@ class SubscriptionLimitError(SubscriptionError):
         return "Subscription limit reached ({}).".format(self.max_subscribers)
 
 
-class ClientSubscriptionError(SubscriptionError):
+class ClientError(IntegrationError):
     """Raised when attempting to subscribe to a manager and the client was
     unable to subscribe to one or more subscriptions due to an unhandled exception.
     """
@@ -188,3 +188,37 @@ class ClientClosed(IntegrationError):
 
 class DroppedSubscriber(IntegrationError):
     """Can be raised when a subscriber has been stopped on the manager side."""
+
+
+class PIWebIntegrationError(IntegrationError):
+    """Base exception for pi_web integration errors."""
+
+
+class PIWebContentError(PIWebIntegrationError):
+    """Raised when a required property is not present in the body of a successful
+    response.
+    """
+
+
+class PIWebResponseError(PIWebIntegrationError):
+    """Raised when the `Errors` property is present in the body of successful
+    HTTP response.
+    """
+    def __init__(self, errors: List[str]) -> None:
+        self.errors = errors
+
+    def __str__(self) -> str:
+        return "{} errors returned in response body.".format(len(self.errors))
+
+
+class TraxxIntegrationError(IntegrationError):
+    """Base exception for Traxx errors."""
+
+
+class TraxxExpiredSession(TraxxIntegrationError):
+    """Raised when the session cookie is expired and we can no longer authenticate
+    with the server.
+    """
+
+    def __str__(self) -> str:
+        return "Signed out. Please refresh session config"

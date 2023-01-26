@@ -79,7 +79,7 @@ class AnySubscription(BaseSubscription):
 
 class DroppedConnection(HashableModel):
     """Message for a dropped connection."""
-    subscriptions: Set[BaseSubscription]
+    subscriptions: Set[BaseSubscription | None]
     error: Exception | None
 
 

@@ -2,7 +2,7 @@ from typing import Set
 
 from pydantic import Field
 
-from commandcenter.auth.user import BaseUser
+from commandcenter.auth.models import BaseUser
 
 
 

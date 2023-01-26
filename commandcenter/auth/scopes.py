@@ -6,7 +6,7 @@ from starlette.authentication import AuthCredentials
 from starlette.types import Scope
 
 from commandcenter.exceptions import NotConfigured
-from commandcenter.auth.user import BaseUser
+from commandcenter.auth.models import BaseUser
 
 
 

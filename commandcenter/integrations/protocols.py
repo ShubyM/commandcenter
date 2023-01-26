@@ -51,12 +51,6 @@ class Client(Protocol):
 
         Args:
             subscriptions: The subscriptions to subscribe to.
-
-        Returns:
-            status: A boolean indicating whether or not the operation was
-                successful. If `True`, *all* subscriptions were successfully
-                subscribed, if `False` *none* of the subscriptions were subscribed
-                to.
         """
         ...
 

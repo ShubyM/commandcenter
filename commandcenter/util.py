@@ -1,20 +1,41 @@
+import csv
+import functools
+import io
 import json
 import logging
+import pathlib
 import random
 import re
 import subprocess
-from collections.abc import Iterable
+from collections.abc import AsyncIterable, Awaitable, Iterable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
-from typing import Any, Dict, List, Tuple, Type
+from enum import Enum, IntEnum
+from typing import Any, Callable, Dict, List, Tuple, Type
 
+import anyio
 import dateutil.parser
+import jsonlines
+import ndjson
 import orjson
 import pendulum
+from accept_types import get_best_match
 from pendulum.datetime import DateTime
+from ratelimit.auths import EmptyInformation
+from starlette.authentication import BaseUser
+from starlette.types import Scope
+from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 from commandcenter.exceptions import NonZeroExitCode
-from commandcenter.types import TimeseriesRow
+from commandcenter.types import JSONPrimitive, TimeseriesRow
+
+
+"""A collection of objects and functions used throughout various modules in
+commandcenter.
+
+If the number of util functions grows unwieldy we might eventually break it up
+but for now we enjoy the mess.
+"""
 
 
 TIMEZONE = pendulum.now().timezone_name
@@ -187,6 +208,12 @@ def iter_timeseries_rows(
         yield timestamp, row
 
 
+def format_timeseries_rows(row: TimeseriesRow) -> List[JSONPrimitive]:
+    """Formats a timeseries row as an iterable which can be converted to a row
+    for a file format.
+    """
+    return [row[0].isoformat(), *row[1]]
+
 class EqualJitterBackoff:
     """Equal jitter backoff upon failure"""
 
@@ -197,3 +224,228 @@ class EqualJitterBackoff:
     def compute(self, failures):
         temp = min(self.max, self.initial * 2**failures) / 2
         return temp + random.uniform(0, temp)
+
+
+def ndjson_writer(buffer: io.StringIO) -> Callable[[Any], None]:
+    """A writer for ndjson streaming."""
+    writer = ndjson.writer(buffer, ensure_ascii=False)
+    return functools.partial(writer.writerow)
+
+
+def jsonlines_writer(buffer: io.StringIO) -> Callable[[Any], None]:
+    """A writer for JSONlines streaming."""
+    writer = jsonlines.Writer(buffer)
+    return functools.partial(writer.write)
+
+
+def csv_writer(buffer: io.StringIO) -> Callable[[Iterable], None]:
+    """A writer for CSV streaming."""
+    writer = csv.writer(buffer, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+    return functools.partial(writer.writerow)
+
+
+def get_file_format_writer(accept: str) -> "FileWriter":
+    """Matches the accept header to a file format writer."""
+    accept_types = [
+        "text/csv",
+        "application/jsonlines",
+        "application/x-jsonlines",
+        "application/x-ndjson"
+    ]
+    best_match = get_best_match(accept.lower(), accept_types)
+    buffer = io.StringIO()
+    
+    match best_match:
+        case "text/csv":
+            writer = csv_writer(buffer)
+            return FileWriter(buffer, writer, ".csv")
+        case "application/jsonlines" | "application/x-jsonlines":
+            writer = jsonlines_writer(buffer)
+            return FileWriter(buffer, writer, ".jsonl")
+        case "application/x-ndjson":
+            writer = ndjson_writer(buffer)
+            return FileWriter(buffer, writer, ".ndjson")
+        case _:
+            return
+
+
+@dataclass
+class FileWriter:
+    buffer: io.StringIO
+    writer: Callable[[Any], None]
+    suffix: str
+
+
+async def chunked_transfer(
+    send: AsyncIterable[Any],
+    buffer: io.BytesIO | io.StringIO,
+    writer: Callable[[Any], None],
+    formatter: Callable[[Any], Any],
+    logger: logging.Logger,
+    chunk_size: int = 1000
+) -> AsyncIterable[str]:
+    """Stream rows of data in chunks.
+    
+    Each row is appended to the buffer up to `chunk_size` at which point a
+    flush is triggered and the buffer is cleared.
+
+    `None` is considered a break and will trigger a flush.
+
+    Args:
+        iterator: The object to iterate over.
+        buffer: The buffer that will hold data.
+        formatter: A callable that accepts the raw output from the iterator and
+            formats it so it can be understood by the writer.
+        witer: A callable that accepts data from the formatter and writes the
+            data to the buffer.
+        chunk_size: The max number of iterations before a flush is triggered.
+
+    Raises:
+        Exception: Any exception raise by the iterator, writer, or formatter.
+    """
+    count = 0
+    try:
+        async for data in send:
+            if data is None:
+                chunk = buffer.getvalue()
+                if chunk:
+                    yield chunk
+                buffer.seek(0)
+                buffer.truncate(0)
+                chunk_size = 0
+                continue
+            
+            try:
+                writer(formatter(data))
+            except Exception:
+                logger.error("Unhandled error in writer", exc_info=True)
+                raise
+            
+            count += 1
+            if count >= chunk_size:
+                chunk = buffer.getvalue()
+                if chunk:
+                    yield chunk
+                buffer.seek(0)
+                buffer.truncate(0)
+                count = 0
+        else:
+            chunk = buffer.getvalue()
+            if chunk:
+                yield chunk
+            return
+    except Exception:
+        logger.error("Unhandled exception in send", exc_info=True)
+
+
+async def sse_handler(send: AsyncIterable[Any], logger: logging.Logger) -> AsyncIterable[Any]:
+    """Wraps an async iterable, yields events."""
+    try:
+        async for msg in send:
+            yield msg
+    except Exception:
+        logger.error("Connection closed abnormally", exc_info=True)
+        raise
+
+
+async def ws_handler(
+    websocket: WebSocket,
+    logger: logging.Logger,
+    receive: Callable[[WebSocket], Awaitable[None]] | None = None,
+    send: AsyncIterable[Any] | None = None
+) -> None:
+    """Manages a websocket connection."""
+    async def wrap_send() -> None:
+        async for data in send:
+            match data:
+                case str():
+                    await websocket.send_text(data)
+                case bytes():
+                    await websocket.send_bytes(data)
+                case _:
+                    await websocket.send_json(data)
+
+    receive = receive or _null_receive
+
+    try:
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(receive(websocket))
+            tg.start_soon(wrap_send(send))
+
+    except WebSocketDisconnect as e:
+        logger.debug(
+            "Websocket connection closed by user",
+            extra={
+                "code": e.code,
+                "reason": e.reason
+            }
+        )
+    
+    except Exception:
+        logger.error("Connection closed abnormally", exc_info=True)
+        try:
+            await websocket.close(1006)
+        except Exception:
+            pass
+
+    finally:
+        if websocket.state != WebSocketState.DISCONNECTED:
+            try:
+                await websocket.close(1006)
+            except:
+                pass
+
+
+async def _null_receive(websocket: WebSocket) -> None:
+    """Receives messages from a websocket but does nothing with them."""
+    while True:
+        msg = await websocket.receive()
+        if msg["type"] == "websocket.disconnect":
+            code = msg["code"]
+            if isinstance(code, IntEnum): # wsproto
+                raise WebSocketDisconnect(code=code.value, reason=code.name)
+            # websockets
+            raise WebSocketDisconnect(code=code.code, reason=code.reason)
+
+
+def cast_path(path: str | None) -> pathlib.Path:
+    """Cast a non-empty string to a path."""
+    if path:
+        return pathlib.Path(path)
+    return path
+
+
+def cast_logging_level(level: str | int) -> int:
+    """Cast a logging level as str or int to int."""
+    try:
+        return int(level)
+    except ValueError:
+        match level.lower():
+            case "notset":
+                return 0
+            case "debug":
+                return 10
+            case "info":
+                return 20
+            case "warning":
+                return 30
+            case "error":
+                return 40
+            case "critical":
+                return 50
+            case _:
+                return 0
+
+
+def username(scope: Scope) -> Tuple[str, str]:
+    """Auth backend for rate limiting based on username.
+    
+    This requires the 'user' key in the scope, therefore the `AuthenticationMiddleware`
+    must be installed in the stack before the rate limit middleware.
+    """
+    user: BaseUser = scope["user"]
+    if "user" in scope:
+        id_ = user.identity
+        if id_:
+            return id_, "default"
+    raise EmptyInformation(scope)

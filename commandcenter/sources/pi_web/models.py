@@ -362,7 +362,11 @@ class PISubscriberItem(PIBaseSubscriberMessage):
     web_id: str
     items: List[PISubscriberSubItem]
 
+    def subscription_message(self, subscription: PISubscription) -> str:
+        """JSON representation of subscription with items."""
+        return orjson.dumps({"subscription": subscription, "items": self.items}).decode()
+
 
 class PISubscriberMessage(PIBaseSubscriberMessage):
-    """Model PI subscriber messages."""
+    """Model for PI subscriber messages."""
     items: List[PISubscriberItem]

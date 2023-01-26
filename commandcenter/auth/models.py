@@ -27,3 +27,9 @@ class BaseUser(BaseModel, StarletteBaseUser):
     @property
     def display_name(self) -> str:
         return self.identity
+
+
+class Token(BaseModel):
+    """Access token model."""
+    access_token: str
+    token_type: str

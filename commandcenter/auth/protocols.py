@@ -1,6 +1,6 @@
-from typing import Any, Dict, Protocol
+from typing import Protocol
 
-from commandcenter.auth.user import BaseUser
+from commandcenter.auth.models import BaseUser
 
 
 
@@ -25,28 +25,5 @@ class AuthenticationClient(Protocol):
         
         Returns:
             user: `BaseUser` with populated user information.
-        """
-        ...
-
-
-class JWTTokenHandler(Protocol):
-    def issue(self, claims: Dict[str, Any]) -> str:
-        """Issue a JWT.
-        
-        Args:
-            claims: dictionary of JWT claims.
-        
-        Raises:
-            JWTError: If there was an error encoding the claims.
-        """
-        ...
-
-    def validate(self, token: str) -> str | None:
-        """Validate and extract the username from the token.
-
-        Args:
-            token: JWT from the client.
-        Returns:
-            username: If the token is invalid or expired this returns `None`.
         """
         ...

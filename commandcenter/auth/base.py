@@ -7,15 +7,15 @@ from pydantic import BaseModel, SecretStr
 from starlette.authentication import AuthenticationBackend, AuthCredentials
 from starlette.requests import HTTPConnection
 
-from commandcenter.auth.protocols import AuthenticationClient, JWTTokenHandler
-from commandcenter.auth.user import BaseUser
+from commandcenter.auth.models import BaseUser
+from commandcenter.auth.protocols import AuthenticationClient
 
 
 
 _LOGGER = logging.getLogger("commandcenter.auth")
 
 
-class TokenHandler(BaseModel, JWTTokenHandler):
+class TokenHandler(BaseModel):
     """Model for issuing and validating JWT's."""
     key: SecretStr
     expire: timedelta = 1800
