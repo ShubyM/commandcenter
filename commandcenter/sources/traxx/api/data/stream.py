@@ -26,8 +26,8 @@ async def get_sensor_data(
     subscriptions: Sequence[TraxxSubscription],
     start_time: datetime,
     end_time: Optional[datetime] = None,
-    interval: Union[timedelta, int] = timedelta(minutes=120),
-    timezone: str = TIMEZONE
+    timezone: str = TIMEZONE,
+    include_header: bool = True
 ) -> AsyncIterable[TimeseriesRow]:
     """Stream timestamp aligned, recorded data for a sequence of Traxx subscriptions.
     
@@ -46,6 +46,8 @@ async def get_sensor_data(
             the data is requested at once.
         timezone: The timezone to convert the returned data into. The default is
             the local system timezone.
+        include_header: If `True` the first row is the sorted hash of the
+            subscriptions.
 
     Yields:
         row: A `TimeseriesRow`.
@@ -65,6 +67,8 @@ async def get_sensor_data(
     # those values (Traxx devices transmit data on 14 minute cycles normally)
     start_time_extend =  start_time - timedelta(minutes=15)
     end_time_extend = end_time + timedelta(minutes=15)
+    
+    chunk_interval = min(int(1200/len(subscriptions), 120))
     interval = timedelta(minutes=interval) if isinstance(interval, int) else interval
 
     if not isinstance(interval, timedelta):
@@ -72,7 +76,8 @@ async def get_sensor_data(
     
     start_times, end_times = split_range(start_time_extend, end_time_extend, interval)
 
-    yield [hash(subscription) for subscription in subscriptions]
+    if include_header:
+        yield [hash(subscription) for subscription in subscriptions]
 
     for start_time_, end_time_ in zip(start_times, end_times):
         dispatch = [

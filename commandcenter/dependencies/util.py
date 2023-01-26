@@ -13,10 +13,10 @@ def get_file_writer(request: Request) -> FileWriter:
     Defaults to csv writer if "accept" isnt present.
     """
     accept = request.headers.get("accept", "text/csv")
-    file_writer = get_file_format_writer(accept)
-    if file_writer is None:
+    try:
+        return get_file_format_writer(accept)
+    except ValueError:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
-    return file_writer
 
 
 def parse_timestamp(default_timedelta: timedelta | None = None):

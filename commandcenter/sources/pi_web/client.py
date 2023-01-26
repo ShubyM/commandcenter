@@ -99,7 +99,11 @@ class PIWebConnection(BaseConnection):
             max_msg_size=max_msg_size
         )
         backoff = EqualJitterBackoff(max=max_backoff, initial=initial_backoff)
-
+        _LOGGER.debug(
+            "Established connection for %i subscriptions",
+            len(self._subscriptions),
+            extra={"url", url}
+        )
         try:
             while True:
                 async for msg in ws:

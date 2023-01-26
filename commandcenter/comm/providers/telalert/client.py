@@ -54,22 +54,19 @@ class TelAlertClient:
         self._lock: asyncio.Semaphore = asyncio.Semaphore(max_workers)
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
-    async def send_alert(self, msg: TelAlertMessage) -> None:
+    async def send_alert(self, message: TelAlertMessage) -> None:
         """Send a notification through the TelAlert system to any number of
         destinations or groups.
         
         Args
-            msg: The message to send.
-            groups: The group(s) to send the message to.
-            destinations: Individual destinations to send the message to.
-            subject: The subject line that appears in email notification destinations.
+            message: The message to send.
         """
         commands = []
-        msg = msg.msg
-        subject = msg.subject or ""
-        for group in msg.groups:
+        msg = message.msg
+        subject = message.subject or ""
+        for group in message.groups:
             commands.append([self._path, "-g", group, "-m", msg, "-host", self._host, "-subject", subject])
-        for destination in msg.destinations:
+        for destination in message.destinations:
             commands.append([self._path, "-i", destination, "-m", msg, "-host", self._host, "-subject", subject])
         tasks = [self._execute_command(command) for command in commands]
         results = await asyncio.gather(*tasks, return_exceptions=True)

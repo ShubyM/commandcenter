@@ -7,7 +7,7 @@ from enum import IntEnum
 from types import TracebackType
 from typing import Any, Deque, Dict, Set, Type
 
-from commandcenter.exceptions import ClientClosed, DroppedSubscriber
+from commandcenter.exceptions import ClientClosed
 from commandcenter.integrations.models import BaseSubscription, DroppedConnection
 from commandcenter.integrations.protocols import (
     Client,
@@ -266,13 +266,3 @@ class BaseSubscriber(Subscriber):
             self.stop(exc_value)
         else:
             self.stop(None)
-
-
-async def iter_subscriber(subscriber: Subscriber) -> AsyncIterable[str]:
-    """Iterates over a subscriber yielding events."""
-    with subscriber:
-        async for msg in subscriber:
-            yield msg
-        else:
-            assert subscriber.stopped
-            raise DroppedSubscriber()

@@ -23,7 +23,8 @@ async def get_interpolated(
     start_time: datetime,
     end_time: Optional[datetime] = None,
     interval: Union[timedelta, int] = 60,
-    timezone: str = TIMEZONE
+    timezone: str = TIMEZONE,
+    include_header: bool = True
 ) -> AsyncIterable[TimeseriesRow]:
     """Stream timestamp aligned, interpolated data for a sequence of PI subscriptions.
     
@@ -43,6 +44,8 @@ async def get_interpolated(
             pieces.
         timezone: The timezone to convert the returned data into. The default is
             the local system timezone.
+        include_header: If `True` the first row is the sorted hash of the
+            subscriptions.
 
     Yields:
         row: A `TimeseriesRow`.
@@ -71,7 +74,7 @@ async def get_interpolated(
         raise TypeError(f"Interval must be timedelta or int. Got {type(interval)}")
     str_interval = f"{interval.total_seconds()} seconds"
 
-    request_chunk_size = int(150000/len(web_ids))
+    request_chunk_size = min(int(150_000/len(web_ids)), 10_000)
     start_times, end_times = split_interpolated_range(
         start_time,
         end_time,
@@ -79,7 +82,8 @@ async def get_interpolated(
         request_chunk_size
     )
     
-    yield [hash(subscription) for subscription in subscriptions]
+    if include_header:
+        yield [hash(subscription) for subscription in subscriptions]
     
     for start_time, end_time in zip(start_times, end_times):
         dispatch = [
@@ -110,7 +114,8 @@ async def get_recorded(
     start_time: datetime,
     end_time: Optional[datetime] = None,
     scan_rate: float = 5.0,
-    timezone: str = TIMEZONE
+    timezone: str = TIMEZONE,
+    include_header: bool = True
 ) -> AsyncIterable[TimeseriesRow]:
     """Stream timestamp aligned, recorded data for a sequence of PI subscriptions.
     
@@ -132,6 +137,8 @@ async def get_recorded(
             helps slice the time range.
         timezone: The timezone to convert the returned data into. The default is
             the local system timezone.
+        include_header: If `True` the first row is the sorted hash of the
+            subscriptions.
 
     Yields:
         row: A `TimeseriesRow`.
@@ -154,7 +161,7 @@ async def get_recorded(
     subscriptions = sorted(subscriptions)
     web_ids = [subscription.web_id for subscription in subscriptions]
 
-    request_chunk_size = int(150000/len(web_ids))
+    request_chunk_size = min(int(150_000/len(web_ids)), 10_000)
     start_times, end_times = split_recorded_range(
         start_time,
         end_time,
@@ -162,7 +169,8 @@ async def get_recorded(
         scan_rate
     )
     
-    yield [hash(subscription) for subscription in subscriptions]
+    if include_header:
+        yield [hash(subscription) for subscription in subscriptions]
 
     for i, (start_time, end_time) in enumerate(zip(start_times, end_times)):
         first_row, last_row = await _get_recorded_at_times(

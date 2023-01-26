@@ -1,12 +1,13 @@
 import hashlib
 from collections import OrderedDict
-from typing import List, Sequence, Set
+from typing import Dict, List, Sequence, Set
 
 import orjson
 from pydantic import BaseModel, validator
 
 from commandcenter.caching.tokens import ReferenceToken, Tokenable
 from commandcenter.sources import Sources
+from commandcenter.types import JSONContent
 from commandcenter.util import json_loads
 
 
@@ -107,3 +108,23 @@ class BaseSubscriptionRequest(Tokenable):
 class AnySubscriptionRequest(BaseSubscriptionRequest):
     """Subscription request model that allows for mixed subscriptions."""
     subscriptions: Sequence[AnySubscription]
+
+    def group(self) -> Dict[Sources, List[AnySubscription]]:
+        sources = set([subscription.source for subscription in self.subscriptions])
+        groups = {}
+        for source in sources:
+            group = [
+                subscription for subscription in self.subscriptions
+                if subscription.source == source
+            ]
+            groups[source] = group
+        return groups
+
+
+class AnySubscriberMessage(BaseModel):
+    """Unconstrained subscriber message. Used primarily for OpenAPI schema"""
+    subscription: BaseSubscription
+    items: List[JSONContent]
+
+    class Config:
+        allow_arbitrary_types=True

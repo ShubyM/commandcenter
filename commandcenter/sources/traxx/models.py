@@ -31,6 +31,10 @@ class TraxxSubscription(BaseSubscription):
     sensor_type: SensorTypes = SensorTypes.PROXIMITY
     source: Sources = Sources.TRAXX
 
+    @property
+    def key(self) -> str:
+        return f"{self.asset_id}-{self.sensor_id}"
+
 
 class TraxxSubscriptionRequest(BaseSubscriptionRequest):
     """Model for PI Web subscription requests."""

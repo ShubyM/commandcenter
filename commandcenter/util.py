@@ -258,15 +258,15 @@ def get_file_format_writer(accept: str) -> "FileWriter":
     match best_match:
         case "text/csv":
             writer = csv_writer(buffer)
-            return FileWriter(buffer, writer, ".csv")
+            return FileWriter(buffer, writer, ".csv", "text/csv")
         case "application/jsonlines" | "application/x-jsonlines":
             writer = jsonlines_writer(buffer)
-            return FileWriter(buffer, writer, ".jsonl")
+            return FileWriter(buffer, writer, ".jsonl", "application/x-jsonlines")
         case "application/x-ndjson":
             writer = ndjson_writer(buffer)
-            return FileWriter(buffer, writer, ".ndjson")
+            return FileWriter(buffer, writer, ".ndjson", "application/x-ndjson")
         case _:
-            return
+            raise ValueError()
 
 
 @dataclass
@@ -274,6 +274,7 @@ class FileWriter:
     buffer: io.StringIO
     writer: Callable[[Any], None]
     suffix: str
+    media_type: str
 
 
 async def chunked_transfer(
@@ -437,7 +438,7 @@ def cast_logging_level(level: str | int) -> int:
                 return 0
 
 
-def username(scope: Scope) -> Tuple[str, str]:
+async def username_limit(scope: Scope) -> Tuple[str, str]:
     """Auth backend for rate limiting based on username.
     
     This requires the 'user' key in the scope, therefore the `AuthenticationMiddleware`
