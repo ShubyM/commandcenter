@@ -1,13 +1,12 @@
 import hashlib
 from collections import OrderedDict
-from typing import Dict, List, Sequence, Set
+from typing import Any, Dict, List, Sequence, Set
 
 import orjson
 from pydantic import BaseModel, validator
 
 from commandcenter.caching.tokens import ReferenceToken, Tokenable
 from commandcenter.sources import Sources
-from commandcenter.types import JSONContent
 from commandcenter.util import json_loads
 
 
@@ -30,7 +29,7 @@ class HashableModel(BaseModel):
 
     def __hash__(self) -> int:
         model = self.dict()
-        sorted_ = OrderedDict(sorted_(model.items()))
+        sorted_ = OrderedDict(sorted(model.items()))
         try:
             o = orjson.dumps(sorted_)
         except Exception as e:
@@ -83,6 +82,15 @@ class DroppedConnection(HashableModel):
     subscriptions: Set[BaseSubscription | None]
     error: Exception | None
 
+    class Config:
+        arbitrary_types_allowed=True
+
+    @validator("error")
+    def _is_exception(cls, v: Exception) -> Exception:
+        if not isinstance(v, Exception):
+            raise TypeError(f"Expected 'Exception', got {type(v)}")
+        return v
+
 
 class BaseSubscriptionRequest(Tokenable):
     """Base model for a sequence of subscriptions that a client registers with
@@ -124,7 +132,4 @@ class AnySubscriptionRequest(BaseSubscriptionRequest):
 class AnySubscriberMessage(BaseModel):
     """Unconstrained subscriber message. Used primarily for OpenAPI schema"""
     subscription: BaseSubscription
-    items: List[JSONContent]
-
-    class Config:
-        allow_arbitrary_types=True
+    items: List[Any]

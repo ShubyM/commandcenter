@@ -206,10 +206,15 @@ class BaseSubscriber(Subscriber):
         self._data_waiter: asyncio.Future = None
         self._stop_waiter: asyncio.Future = None
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        self._started: asyncio.Event = asyncio.Event()
 
     @property
     def stopped(self) -> bool:
-        return self._stop_waiter is not None and not self._stop_waiter.done()
+        return self._stop_waiter is None or self._stop_waiter.done()
+
+    @property
+    def started(self) -> asyncio.Event:
+        return self._started
 
     def stop(self, e: Exception | None) -> None:
         waiter = self._stop_waiter
@@ -231,12 +236,12 @@ class BaseSubscriber(Subscriber):
     
     async def start(self, subscriptions: Set[BaseSubscription], maxlen: int) -> None:
         assert self._stop_waiter is None
-        self.subscriptions.update(subscriptions)
+        self._subscriptions.update(subscriptions)
         waiter = self._loop.create_future()
         self._stop_waiter = waiter
 
         self._data = deque(maxlen=maxlen)
-
+        self._started.set()
         await waiter
 
     async def wait_for_data(self) -> None:

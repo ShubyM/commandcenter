@@ -107,6 +107,13 @@ async def search_points(
                     reason="Search returned unhandled data type."
                 )
             )
+        elif not items:
+            failed.append(
+                PIObjSearchFailed(
+                    obj=point,
+                    reason="Search returned no results."
+                )
+            )
         elif len(items) > 1:
             failed.append(
                 PIObjSearchFailed(

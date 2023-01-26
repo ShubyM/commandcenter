@@ -2,6 +2,7 @@ import logging
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
+from fastapi.responses import JSONResponse
 from sse_starlette import EventSourceResponse
 
 from commandcenter.caching.tokens import ReferenceToken
@@ -35,7 +36,7 @@ from commandcenter.util import sse_handler, ws_handler
 
 _LOGGER = logging.getLogger("commandcenter.services.data.unitop")
 
-router = APIRouter(prefix="/piweb", tags=["Unit Ops"])
+router = APIRouter(prefix="/unitop", tags=["Unit Ops"])
 
 
 REQUIRES = {
@@ -75,7 +76,7 @@ async def get_subscribers(
     
     return subscribers
 
-@router.post("/subscribe", response_model=ReferenceToken, dependencies=Depends(requires()))
+@router.post("/subscribe", response_model=ReferenceToken, dependencies=[Depends(requires())])
 async def subscribe(
     token: ReferenceToken = Depends(
         get_reference_token(AnySubscriptionRequest)
@@ -85,10 +86,10 @@ async def subscribe(
     return token
 
 
-@router.get("/stream/{token}", response_class=AnySubscriberMessage)
+@router.get("/stream/{token}", response_class=JSONResponse)
 async def stream(
+    request: Request,
     subscriptions: AnySubscriptionRequest = Depends(get_cached_reference(BaseSubscriptionRequest)),
-    request: Request = Depends()
 ) -> AnySubscriberMessage:
     """Submit a reference token to stream unit op data. This is an event sourcing
     (SSE) endpoint.
@@ -105,13 +106,13 @@ async def stream(
 @router.websocket("/stream/{token}/ws")
 async def stream_ws(
     websocket: WebSocket,
+    request: Request,
     subscriptions: AnySubscriptionRequest = Depends(
         get_cached_reference(
             BaseSubscriptionRequest,
             raise_on_miss=False
         )
     ),
-    request: Request = Depends()
 ) -> AnySubscriberMessage:
     """Submit a reference token to stream unit op data over the websocket protocol."""
     try:

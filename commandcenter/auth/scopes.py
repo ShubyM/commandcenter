@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Collection
 
 from fastapi import HTTPException, status
 from fastapi.requests import Request
@@ -78,7 +78,7 @@ class requires:
     """
     def __init__(
         self,
-        scopes: Sequence[str] = [],
+        scopes: Collection[str] = [],
         any_: bool = False,
         raise_on_no_scopes: bool = False
     ) -> None:
@@ -100,7 +100,7 @@ class requires:
         if isinstance(scopes, AuthCredentials):
             scopes = scopes.scopes
         
-        assert isinstance(scopes, Sequence), f"Unhandled type for scopes {type(scopes)}"
+        assert isinstance(scopes, Collection), f"Unhandled type for scopes {type(scopes)}"
 
         if not user.is_authenticated:
             raise HTTPException(
@@ -113,7 +113,7 @@ class requires:
                 raise NotConfigured("No scopes specified.")
             return user
         
-        if self.any and any([scope in scopes.scopes for scope in self.scopes]):
+        if self.any and any([scope in scopes for scope in self.scopes]):
             return user
         elif all([permission in scopes for permission in self.scopes]):
             return user

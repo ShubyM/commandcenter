@@ -15,8 +15,8 @@ try:
 except ImportError:
     pass
 
+from commandcenter.caching.core.exceptions import CacheError, CacheKeyNotFoundError
 from commandcenter.caching.core.cache import Cache
-from commandcenter.exceptions import CacheError, CacheKeyNotFoundError
 
 
 

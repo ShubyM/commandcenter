@@ -31,7 +31,7 @@ def inject_backend_dependencies(func) -> BaseAuthenticationBackend:
             CC_AUTH_BACKENDS_AD_USERNAME
         )
         from commandcenter.auth.backends.activedirectory import ActiveDirectoryClient
-        client = ActiveDirectoryClient()
+        client = ActiveDirectoryClient
         inject_kwargs.update(
             {
                 "domain": CC_AUTH_BACKENDS_AD_DOMAIN,
@@ -39,7 +39,7 @@ def inject_backend_dependencies(func) -> BaseAuthenticationBackend:
                 "tls": CC_AUTH_BACKENDS_AD_TLS,
                 "maxconn": CC_AUTH_BACKENDS_AD_MAXCONN,
                 "username": CC_AUTH_BACKENDS_AD_USERNAME,
-                "password": CC_AUTH_BACKENDS_AD_PASSWORD,
+                "password": str(CC_AUTH_BACKENDS_AD_PASSWORD),
                 "mechanism": CC_AUTH_BACKENDS_AD_MECHANISM
             }
         )

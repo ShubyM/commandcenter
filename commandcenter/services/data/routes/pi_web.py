@@ -83,7 +83,7 @@ async def handle_search(client: PIWebAPI, objsearch: PIObjSearchRequest) -> PIOb
         return result
     points = [search_ for search_ in objsearch.search if search_.obj_type == PIObjType.POINT]
     result = await search_points(client, points)
-    _ = await anyio.to_thread.run_sync(get_reference_token, result)
+    _ = await anyio.to_thread.run_sync(get_reference_token(PIObjSearchRequest), result)
     return result
 
 
@@ -178,7 +178,7 @@ async def points(
         "and other special cases. Default is FULL"
     ),
     obj_type: str = Query(
-        default=WebIdType.FULL.value,
+        default=PIObjType.POINT.value,
         description="The PI object type to search. Can be element | attribute | "
         "point. Only 'point' is currently supported."
     ),
@@ -240,7 +240,7 @@ async def interpolated(
     )
     
     header = [subscription.name for subscription in sorted(subscriptions.subscriptions)]
-    chunk_size = min(int(1000000/len(header), 5000))
+    chunk_size = min(int(100_0000/len(header), 5000))
     writer(["timestamp", *header])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"
@@ -300,7 +300,7 @@ async def recorded(
     )
     
     header = [subscription.name for subscription in sorted(subscriptions.subscriptions)]
-    chunk_size = min(int(1000000/len(header), 5000))
+    chunk_size = min(int(100_0000/len(header), 5000))
     writer(["timestamp", *header])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"

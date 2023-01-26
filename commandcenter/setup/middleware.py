@@ -36,11 +36,11 @@ def setup_auth_middleware(stack: List[Middleware]) -> None:
         middleware = AuthenticationMiddleware
     backend = setup_auth_backend()
     partial = functools.partial(
-        AuthenticationMiddleware,
+        middleware,
         backend=backend,
         on_error=on_error
     )
-    partial.__name__ = AuthenticationMiddleware.__name__
+    partial.__name__ = middleware.__name__
     stack.append(Middleware(partial))
 
 

@@ -182,7 +182,7 @@ class MemoAPI:
         self,
         func: F | None = None,
         *,
-        backend: str | None,
+        backend: str | None = None,
         max_entries: int | None = None,
         ttl: float | timedelta | None = None
     ):
@@ -367,6 +367,8 @@ class MemoAPI:
     @classmethod
     def set_cache_dir(cls, cache_dir: os.PathLike) -> None:
         """Set the caching directory for the memo cache API."""
+        if not cache_dir:
+            return
         with cls._lock:
             with _memo_caches._caches_lock:
                 for cache in _memo_caches._function_caches.values():
@@ -378,6 +380,9 @@ class MemoAPI:
                             stacklevel=2
                         )
                 cache_dir = pathlib.Path(cache_dir)
+                old_dir = cls._cache_dir
+                if old_dir == cache_dir:
+                    return
                 if not make_cache_path(cache_dir):
                     warnings.warn(
                         "Failed to create the cache directory. The existing "
@@ -385,7 +390,6 @@ class MemoAPI:
                         stacklevel=2
                     )
                     return
-                old_dir = cls._cache_dir
                 try:
                     if os.path.isdir(old_dir):
                         shutil.rmtree(old_dir)

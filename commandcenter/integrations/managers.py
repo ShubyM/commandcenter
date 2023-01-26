@@ -33,6 +33,10 @@ class LocalManager(BaseManager):
         super().__init__(client, subscriber, max_subscribers, maxlen)
         self._runner: asyncio.Task = self._loop.create_task(self._start())
 
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
     async def close(self) -> None:
         fut = self._runner
         self._runner = None
@@ -88,7 +92,7 @@ class LocalManager(BaseManager):
         self._subscribers[fut] = subscriber
 
         _LOGGER.debug("Added subscriber %i of %i", len(self._subscribers), self._max_subscribers)
-        
+        await subscriber.started.wait()
         return subscriber
 
     def subscriber_lost(self, fut: asyncio.Future) -> None:
@@ -136,9 +140,9 @@ class LocalManager(BaseManager):
         while True:
             try:
                 async with anyio.create_task_group() as tg:
-                    tg.start_soon(self._data())
-                    tg.start_soon(self._dropped())
-                    tg.start_soon(self._poll())
+                    tg.start_soon(LocalManager._data, self)
+                    tg.start_soon(LocalManager._dropped, self)
+                    tg.start_soon(LocalManager._poll, self)
             except ClientClosed:
                 self._loop.create_task(self.close())
                 break

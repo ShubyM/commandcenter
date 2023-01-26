@@ -3,12 +3,12 @@ import inspect
 from starlette.config import Config
 from starlette.datastructures import CommaSeparatedStrings, Secret
 
-from commandcenter.sources.pi_web import PIClient, WebIdType
+from commandcenter.sources.pi_web import PIWebClient, WebIdType
 
 
 
 config = Config(".env")
-client_parameters = inspect.signature(PIClient).parameters
+client_parameters = inspect.signature(PIWebClient).parameters
 
 
 # HTTP Client Params

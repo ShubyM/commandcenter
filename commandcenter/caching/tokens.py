@@ -11,7 +11,7 @@ class ReferenceToken(BaseModel):
     token: str
 
 
-class Tokenable:
+class Tokenable(BaseModel):
     """Standard model for objects that can be cached by a reference token."""
     @property
     def token(self) -> ReferenceToken:

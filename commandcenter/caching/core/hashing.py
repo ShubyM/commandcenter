@@ -13,8 +13,8 @@ import weakref
 from enum import Enum
 from typing import Any, Dict, List, Pattern
 
+from commandcenter.caching.core.exceptions import UnhashableTypeError
 from commandcenter.caching.core.util import CacheType, is_type, repr_
-from commandcenter.exceptions import UnhashableTypeError
 
 
 # Arbitrary item to denote where we found a cycle in a hashed object.

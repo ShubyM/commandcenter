@@ -12,7 +12,7 @@ formatters:
         datefmt: "%H:%M:%S"
 
     standard:
-        (): commandcenter.core.logging.formatters.StandardFormatter
+        (): commandcenter.logging.formatters.StandardFormatter
         exclude_fields: [process.pid, process.name, process.thread.id, process.thread.name]
 
 
@@ -21,11 +21,11 @@ filters:
         (): asgi_correlation_id.CorrelationIdFilter
         uuid_length: 32
     ip_address:
-        (): commandcenter.core.logging.filters.context.IPAddressFilter
+        (): commandcenter.logging.filters.context.IPAddressFilter
     username:
-        (): commandcenter.core.logging.filters.context.UserFilter
+        (): commandcenter.logging.filters.context.UserFilter
     host:
-        (): commandcenter.core.logging.filters.HostFilter
+        (): commandcenter.logging.filters.HostFilter
 
 handlers:
     

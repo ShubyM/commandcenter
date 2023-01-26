@@ -1,4 +1,5 @@
 import hashlib
+import itertools
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Sequence, Union
@@ -109,7 +110,7 @@ class PIObjSearch(HashableModel):
             return False
 
 
-class PIObjSearchFailed(BaseModel):
+class PIObjSearchFailed(HashableModel):
     """Model to detail why an object search failed."""
     obj: PIObjSearch
     reason: str
@@ -134,12 +135,23 @@ class PIObjSearchRequest(Tokenable):
         return ReferenceToken(token=str(token))
 
 
-class PIObjSearchResult(BaseModel):
+class PIObjSearchResult(Tokenable):
     """The results of an object search. Searches which returned a result are
     converted to subscriptions. Failed searches provide a reason.
     """
     subscriptions: List[Optional[PISubscription]]
     failed: List[Optional[PIObjSearchFailed]]
+
+    @property
+    def token(self) -> ReferenceToken:
+        """A unique iddentification for this sequence of searches. Tokens are
+        stable across runtimes.
+        """
+        subscriptions = sorted(self.subscriptions)
+        failed = sorted(self.failed)
+        o = 'searchresult'.join([str(hash(obj)) for obj in itertools.chain(subscriptions, failed)]).encode()
+        token = int(hashlib.shake_128(o).hexdigest(16), 16)
+        return ReferenceToken(token=str(token))
 
 
 class PIBaseChannelMessage(BaseModel):
