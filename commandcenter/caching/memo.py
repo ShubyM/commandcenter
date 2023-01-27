@@ -16,6 +16,10 @@ try:
     from redis import Redis
 except ImportError:
     pass
+try:
+    from pymemcache import PooledClient as Memcached
+except ImportError:
+    pass
 
 from commandcenter.caching.core.cache import (
     Cache,
@@ -26,6 +30,7 @@ from commandcenter.caching.core.cache import (
 )
 from commandcenter.caching.core.caches import (
     DiskCache,
+    MemcachedCache,
     MemoCache,
     RedisCache
 )
@@ -42,6 +47,7 @@ class caches(ObjSelection):
     MEMORY = "memory", MemoCache
     DISK = "disk", DiskCache
     REDIS = "redis", RedisCache
+    MEMCACHED = "memcached", MemcachedCache
 
 
 class MemoizedFunction(CachedFunction):
@@ -103,7 +109,6 @@ class MemoCaches:
         """
         backend: Type[Cache] = caches(backend).cls if backend is not None else caches.MEMORY.cls
         if backend is not caches.MEMORY.cls:
-            # Limit the buffer size but let entries live forever is ttl is None
             if max_entries is None:
                 max_entries = 100
         else:
@@ -177,6 +182,7 @@ class MemoAPI:
     _lock: threading.Lock = threading.Lock()
     _cache_dir: pathlib.Path = pathlib.Path("~").expanduser().joinpath(f".{DIR_NAME}/.cache")
     _redis: "Redis" = None
+    _memcached: "Memcached" = None
 
     def __call__(
         self,
@@ -198,18 +204,18 @@ class MemoAPI:
         
         Args:
             func: The function to memoize. This hashes the function's source code.
-            backend: The caching backend to use ("memory", "disk", "redis").
-                The default is "memory"
+            backend: The caching backend to use ("memory", "disk", "redis",
+                "memcached"). The default is "memory"
             max_entries: The maximum number of entries to keep in the cache, or
                 None for an unbounded cache. (When a new entry is added
                 to a full cache, the oldest cached entry will be removed.) The
-                default is None. For the "disk" and "redis" backends, an in memory
-                cache is used and capped at 100 entries for performance. You can
-                disable the in memory buffer by setting `max_entrie` to 0
+                default is None. For the "disk", "redis", and "memcached" backends,
+                an in memory cache is used for performance (100 entries by default).
+                You can disable the in memory buffer by setting `max_entrie` to 0.
             ttl: The maximum number of seconds to keep an entry in the cache.
                 For the "disk" backend, this only applies to the in memory buffer.
-                If using the "redis" backend, ttl cannont be `None`, if `None`
-                it defaults to 86400 seconds
+                If using the "redis" or "memcached" backends, ttl cannont be
+                `None`, if `None` it defaults to 86400 seconds
 
         Note: You should always call `memo.clear()` when your appication shuts
         down. This will clear all disk cache files. Its less important with
@@ -236,8 +242,9 @@ class MemoAPI:
         ...     # Fetch data from URL here, and then clean it up.
         ...     return data
 
-        There are three available backend options ("memory", "disk", "redis").
-        To use the redis backend, run `pip install redis`.
+        There are three available backend options ("memory", "disk", "redis", "memcached").
+        To use the redis backend, run `pip install redis`. To use the memcached
+        backend run `pip install pymemcache`.
 
         The disk backend will write cached values to disk. You can configure
         where values are cached by using the `set_cache_dir` method...
@@ -249,10 +256,14 @@ class MemoAPI:
         using the `set_redis_client` method...
         >>> memo.set_redis_client(...)
 
-        Both the redis and disk backends maintain a small in memory cache (100 entries)
-        with an infinite TTL as a performance buffer. If memory is at a premium
-        and you want to disable the buffer simply set `max_entries` to 0 in the
-        decorator...
+        If using the memcached backend you can pass a configured client instance
+        using the `set_memcached_client` method...
+        >>> memo.set_memcached_client(...)
+
+        The redis, memcached, and disk backends maintain a small in memory cache
+        (100 entries by default) with an infinite TTL as a performance buffer.
+        If memory is at a premium and you want to disable the buffer simply set
+        `max_entries` to 0 in the decorator...
         >>> @memo(backend="disk", max_entries=0)
         ... def fetch_and_clean_data(url):
         ...     # Fetch data from URL here, and then clean it up.
@@ -294,15 +305,22 @@ class MemoAPI:
         """
         backend_kwargs = {}
 
-        backend = caches(backend.lower()) if backend else caches.MEMORY
+        try:
+            backend = caches(backend.lower()) if backend else caches.MEMORY
+        except ValueError:
+            warnings.warn(
+                f"Invalid backend '{backend}', defaulting to memory backend.",
+                stacklevel=2
+            )
+            backend = caches.MEMORY
         if backend is caches.REDIS and self._redis is None:
-            self.set_redis_client()
-            if self._redis is None:
-                backend = caches.MEMORY
-            else:
-                assert isinstance(self._redis, Redis), "Client not set to Redis instance."
-                backend_kwargs["redis"] = lambda: memo._redis
-        
+            self.set_redis_client(None)
+            assert isinstance(self._redis, Redis), "Client not set to Redis instance."
+            backend_kwargs["redis"] = lambda: memo._redis
+        elif backend is caches.MEMCACHED:
+            self.set_memcached_client(None)
+            assert isinstance(self._memcached, Memcached), "Client not set to PooledClient instance."
+            backend_kwargs["memcached"] = lambda: memo._memcached
         elif backend is caches.DISK:
             if not make_cache_path(self._cache_dir):
                 warnings.warn(
@@ -319,10 +337,10 @@ class MemoAPI:
         if isinstance(ttl, timedelta):
             ttl_seconds = ttl.total_seconds()
         else:
-            if backend is caches.REDIS and ttl is None:
+            if backend is caches.REDIS or backend is caches.MEMCACHED and ttl is None:
                 warnings.warn(
-                    "'ttl' cannot be 'None' when using the redis backend. Setting"
-                    "to 86400 seconds",
+                    "'ttl' cannot be 'None' when using the redis | memcached "
+                    "backends. Setting to 86400 seconds",
                     stacklevel=2
                 )
                 ttl = 86400
@@ -343,6 +361,8 @@ class MemoAPI:
                 else:
                     partial = functools.partial(wrap_sync, cached_func)
                 partial.clear = functools.partial(clear_cached_func, cached_func)
+
+                # This is only useful for cache control headers in API responses
                 if ttl_seconds is None or ttl_seconds > 31536000 or backend is caches.DISK:
                     partial.ttl = 31536000
                 else:
@@ -357,6 +377,12 @@ class MemoAPI:
             else:
                 partial = functools.partial(wrap_sync, cached_func)
             partial.clear = functools.partial(clear_cached_func, cached_func)
+
+            # This is only useful for cache control headers in API responses
+            if ttl_seconds is None or ttl_seconds > 31536000 or backend is caches.DISK:
+                partial.ttl = 31536000
+            else:
+                partial.ttl = ttl_seconds
             return partial
 
     @staticmethod
@@ -398,7 +424,7 @@ class MemoAPI:
                 cls._cache_dir = cache_dir
 
     @classmethod
-    def set_redis_client(cls, redis: Optional["Redis"] = None) -> None:
+    def set_redis_client(cls, redis: Optional["Redis"]) -> None:
         """Set the redis client for the memo cache API."""
         try:
             from redis import Redis
@@ -418,9 +444,34 @@ class MemoAPI:
                             stacklevel=2
                         )
                 if redis is None:
-                    cls._redis = Redis()
+                    cls._redis = Redis(max_connections=10)
                 else:
                     cls._redis = redis
+
+    @classmethod
+    def set_memcached_client(cls, memcached: Optional["Memcached"]) -> None:
+        """Set the memcached client for the memo cache API."""
+        try:
+            from pymemcache import PooledClient as Memcached
+        except ImportError:
+            raise RuntimeError(
+                "Attempted to use redis support, but the `redis` package is not "
+                "installed. Use 'pip install commandcenter[redis]'."
+            )
+        with cls._lock:
+            with _memo_caches._caches_lock:
+                for cache in _memo_caches._function_caches.values():
+                    if isinstance(cache, caches.MEMCACHED.cls):
+                        warnings.warn(
+                            "Setting a new Memcached client instance while Memcached "
+                            "caches already exist for memoized functions can "
+                            "lead to cache misses.",
+                            stacklevel=2
+                        )
+                if memcached is None:
+                    cls._memcached = Memcached(("localhost", 11211), max_pool_size=10)
+                else:
+                    cls._memcached = memcached
 
 
 memo = MemoAPI()

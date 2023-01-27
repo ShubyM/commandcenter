@@ -1,5 +1,6 @@
 import hashlib
 from collections import OrderedDict
+from enum import IntEnum
 from typing import Any, Dict, List, Sequence, Set
 
 import orjson
@@ -20,7 +21,7 @@ class HashableModel(BaseModel):
     Hashing: The `dict()` representation of the model is sorted alphanumerically
     by field name and then converted to JSON. The hashing algorithm used is
     SHAKE 128 with a 16 byte length. Finally, the hex digest is converted
-    to an integer.
+    to a base 10 integer.
     """
     class Config:
         frozen=True
@@ -77,8 +78,8 @@ class AnySubscription(BaseSubscription):
         extra="allow"
 
 
-class DroppedConnection(HashableModel):
-    """Message for a dropped connection."""
+class DroppedSubscriptions(BaseModel):
+    """Message for dropped subscriptions from a client to a manager."""
     subscriptions: Set[BaseSubscription | None]
     error: Exception | None
 
@@ -87,7 +88,7 @@ class DroppedConnection(HashableModel):
 
     @validator("error")
     def _is_exception(cls, v: Exception) -> Exception:
-        if not isinstance(v, Exception):
+        if v and not isinstance(v, Exception):
             raise TypeError(f"Expected 'Exception', got {type(v)}")
         return v
 
@@ -133,3 +134,9 @@ class AnySubscriberMessage(BaseModel):
     """Unconstrained subscriber message. Used primarily for OpenAPI schema"""
     subscription: BaseSubscription
     items: List[Any]
+
+
+class SubscriberCodes(IntEnum):
+    """Codes returned from a `wait` on a subscriber."""
+    STOPPED = 1
+    DATA = 2

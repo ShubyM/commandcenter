@@ -31,11 +31,11 @@ class LocalManager(BaseManager):
         maxlen: int = 100
     ) -> None:
         super().__init__(client, subscriber, max_subscribers, maxlen)
-        self._runner: asyncio.Task = self._loop.create_task(self._start())
+        self._runner: asyncio.Task = self._loop.create_task(self._run())
 
     @property
     def closed(self) -> bool:
-        return self._closed
+        return self._runner is None or self._runner.done()
 
     async def close(self) -> None:
         fut = self._runner
@@ -99,14 +99,15 @@ class LocalManager(BaseManager):
         super().subscriber_lost(fut)
         self._event.set()
 
-    async def _data(self) -> None:
-        """Core task to retrieve data from client and publish it to subscribers."""
+    async def _messages(self) -> None:
+        """Retrieve messages from client and publish it to subscribers."""
         async for msg in self._client.messages():
             for fut, subscriber in self._subscribers.items():
                 if not fut.done():
                     subscriber.publish(msg)
 
     async def _dropped(self) -> None:
+        """Retrieve dropped subscriptions and stop any dependent subscribers."""
         async for msg in self._client.dropped():
             subscriptions = msg.subscriptions
             if subscriptions:
@@ -117,16 +118,24 @@ class LocalManager(BaseManager):
                         # if we get here
                         if msg.error:
                             _LOGGER.warning(
-                                "Subscriber stopped due to client connection error",
+                                "Subscriber dropped due to client connection error",
                                 exc_info=msg.error
                             )
-                        # But just in case...
+                        # If there isnt, then thats a bug...
                         else:
-                            _LOGGER.warning("Subscriber dropped without an error on the client")
+                            _LOGGER.error("Subscriber dropped unexpectedly")
 
     async def _poll(self) -> None:
+        """Poll subscribers and cross reference with any unusued client
+        subscriptions.
+
+        Unsubscribe from any client subscriptions which are no longer required.
+        """
         while True:
             await self._event.wait()
+            # If a subscriber disconnects then reconnects we dont need to close
+            # the client connections. So we give it a little time.
+            await asyncio.sleep(5)
             try:
                 subscriptions = self.subscriptions
                 unubscribe = self._client.subscriptions.difference(subscriptions)
@@ -136,18 +145,21 @@ class LocalManager(BaseManager):
             finally:
                 self._event.clear()
 
-    async def _start(self) -> None:
+    async def _run(self) -> None:
+        """Manages background tasks on manager."""
         while True:
             try:
                 async with anyio.create_task_group() as tg:
-                    tg.start_soon(LocalManager._data, self)
                     tg.start_soon(LocalManager._dropped, self)
+                    tg.start_soon(LocalManager._messages, self)
                     tg.start_soon(LocalManager._poll, self)
             except ClientClosed:
                 self._loop.create_task(self.close())
                 break
             except Exception:
                 _LOGGER.error("Unhandled error in manager", exc_info=True)
+                # This really shouldnt happen so we are going to break here.
+                break
 
 
 class Managers(ObjSelection):

@@ -1,44 +1,41 @@
 import asyncio
-from collections.abc import AsyncIterable
+from collections.abc import AsyncIterable, Sequence
 from types import TracebackType
-from typing import (
-    Any,
-    AsyncIterable,
-    Protocol,
-    Sequence,
-    Set,
-    Type,
-)
+from typing import Any, Deque, Protocol, Set, Type
 
-from commandcenter.integrations.models import BaseSubscription, DroppedConnection
+from commandcenter.integrations.models import (
+    BaseSubscription,
+    DroppedSubscriptions,
+    SubscriberCodes
+)
 
 
 
 class Client(Protocol):
     @property
     def capacity(self) -> int:
-        """Return an integer indicating how many more subscriptions this client
+        """Returns an integer indicating how many more subscriptions this client
         can support.
         """
         ...
 
     @property
     def closed(self) -> bool:
-        """Returns `True` if client is closed. A closed client has no connections
-        and cannot accept subscriptions.
+        """Returns `True` if client is closed. A closed client cannot accept
+        new subscriptions.
         """
         ...
     
     @property
     def subscriptions(self) -> Set[BaseSubscription]:
-        """Return a set of the subscriptions from all connections."""
+        """Returns a set of the subscriptions from all connections."""
         ...
     
     async def close(self) -> None:
         """Close the client instance and shut down all connections."""
         ...
 
-    async def dropped(self) -> AsyncIterable[DroppedConnection]:
+    async def dropped(self) -> AsyncIterable[DroppedSubscriptions]:
         """Receive messages for dropped connections."""
         yield
 
@@ -46,19 +43,27 @@ class Client(Protocol):
         """Receive incoming messages from all connections."""
         yield
 
-    def subscribe(self, subscriptions: Sequence[BaseSubscription]) -> None:
-        """Subscribe to a sequence of subscriptions.
+    async def subscribe(self, subscriptions: Set[BaseSubscription]) -> bool:
+        """Subscribe to a set of subscriptions.
 
         Args:
             subscriptions: The subscriptions to subscribe to.
+
+        Returns:
+            bool: If `True`, all subscriptions were subscribed to. If `False`,
+                no subscriptions were subscribed to.
         """
         ...
 
-    def unsubscribe(self, subscriptions: Sequence[BaseSubscription]) -> None:
-        """Unsubscribe from from a sequence of subscriptions.
+    async def unsubscribe(self, subscriptions: Set[BaseSubscription]) -> bool:
+        """Unsubscribe from from a set of subscriptions.
         
         Args:
             subscriptions: The subscriptions to unsubscribe from.
+
+        Returns:
+            bool: If `True`, all subscriptions were unsubscribed from. If `False`,
+                no subscriptions were unsubscribed from.
         """
         ...
 
@@ -69,11 +74,22 @@ class Client(Protocol):
 
 class Connection(Protocol):
     @property
+    def online(self) -> bool:
+        """Returns `True` if the connection is 'online' and is allowed to pubish
+        data to the client.
+        """
+        ...
+
+    @property
     def subscriptions(self) -> Set[BaseSubscription]:
         """Return a set of the subscriptions for this connections."""
         ...
 
-    async def run(self, *args: Any, **kwargs: Any) -> None:
+    def toggle(self) -> None:
+        """Toggle the online status of the connection."""
+        ...
+
+    async def run(self, confirm: asyncio.Future, *args: Any, **kwargs: Any) -> None:
         """Main implementation for the connection.
         
         This method should receive/retrieve, parse, and validate data from the
@@ -89,22 +105,28 @@ class Connection(Protocol):
         data_queue: asyncio.Queue,
         *args: Any,
         **kwargs: Any
-    ) -> None:
-        """Start the connection. This is called as a task by the client.
+    ) -> asyncio.Future:
+        """Start the connection.
 
         Args:
-            subscriptions: A set of subscriptions to connect to at the datasource.
-            data_queue: A queue where processed data is be placed.
+            subscriptions: A set of subscriptions to connect to at the data
+                source.
+            data_queue: A queue where processed data is put.
+        
+        Returns:
+            fut: The running task in the background. If cancelled, this must
+                close the connection.
         """
         ...
 
 
 class Manager(Protocol):
     @property
-    def ready(self) -> asyncio.Event:
-        """Awaitable that controls flow based on core background tasks in the
-        manager.
+    def closed(self) -> bool:
+        """Returns `True` if the manager is closed. A closed manager cannot
+        accept new subscriptions.
         """
+        ...
 
     @property
     def subscriptions(self) -> Set[BaseSubscription]:
@@ -123,6 +145,9 @@ class Manager(Protocol):
         
         Args:
             subscriptions: The subscriptions to subscribe to.
+        
+        Returns:
+            subscriber: The configured subscriber.
         """
         ...
     
@@ -133,28 +158,40 @@ class Manager(Protocol):
 
 class Subscriber(Protocol):
     @property
+    def data(self) -> Deque[str]:
+        """Returns the data buffer for this subscriber."""
+        ...
+
+    @property
     def stopped(self) -> bool:
-        """`True` if subscriber cannot be iterated over."""
+        """Returns `True` if subscriber cannot be iterated over."""
         ...
 
     @property
     def subscriptions(self) -> Set[BaseSubscription]:
-        """Return a set of the subscriptions for this subscriber."""
+        """Returns a set of the subscriptions for this subscriber."""
+        ...
+
+    def publish(self, data: str) -> None:
+        """Publish data to the subscriber.
+        
+        This method is called by the manager.
+        """
+        ...
+    
+    def start(self, subscriptions: Set[BaseSubscription]) -> asyncio.Future:
+        """Start the subscriber.
+        
+        This method is called by the manager.
+        """
         ...
 
     def stop(self, e: Exception | None) -> None:
         """Stop the subscriber."""
         ...
 
-    def publish(self, data: str) -> None:
-        """Publish data to the subscriber."""
-        ...
-
-    async def start(self, subscriptions: Set[BaseSubscription]) -> None:
-        """Start the subscriber.
-        
-        This method is called as a task by the manager.
-        """
+    async def wait(self) -> SubscriberCodes:
+        """Wait for new data to be published."""
         ...
 
     async def __aiter__(self) -> AsyncIterable[str]:
@@ -173,20 +210,8 @@ class Subscriber(Protocol):
 
 
 class Lock:
-    @property
-    def closed(self) -> bool:
-        """`True` is lock is closed and cannot be used."""
-        ...
-
-    async def close(self) -> None:
-        """Close the lock."""
-        ...
-
-    async def acquire(self, subscriptions: Sequence[BaseSubscription]) -> Set[BaseSubscription]:
-        """Acquire a lock for a subscription tied to an `AbstractClient` instance.
-
-        Note: `BaseSubscription` has a consistent hash and that key should be
-        used as the key in `acquire`.
+    async def acquire(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+        """Acquire a lock for a subscription tied to a client.
         
         Args:
             subscriptions: A sequence of subscriptions to try and lock to this
@@ -198,83 +223,70 @@ class Lock:
         """
         ...
 
-    async def register(self, subscriptions: Sequence[BaseSubscription]) -> None:
-        """Register subscriptions tied to an `AbstractSubscriber` instance.
-        
-        This allows the owner of a subscription lock in a different process to
-        poll the locking service and see if a lock which that process owns
-        is still required. This method *must* extend the TTL on a subscription
-        if the key already exists.
-
-        Note: There is a distinct difference between the locks for `acquire`
-        and the locks for `register`. For `register` a hashing algorithm *must*
-        be applied to the hash of the subscription for the key to ensure keys
-        are not overwritten.
+    async def register(self, subscriptions: Set[BaseSubscription]) -> None:
+        """Register subscriptions tied to a subscriber.
 
         Args:
             subscriptions: A sequence of subscriptions to register.
         """
         ...
 
-    async def release(self, subscriptions: Sequence[BaseSubscription]) -> None:
-        """Release a lock for a subscription tied this process.
-        
-        This method must only be called that a process whos client owns the
-        subscription.
+    async def release(self, subscriptions: Set[BaseSubscription]) -> None:
+        """Release the locks for subscriptions owned by this process.
 
         Args:
             subscriptions: A sequence of subscriptions to release an owned lock for.
         """
         ...
 
-    async def extend(self, subscriptions: Sequence[BaseSubscription]) -> None:
-        """Extend the lock on a client subscription owned by this process.
-        
-        This method must only be called that a process whos client owns the
-        subscription.
+    async def extend_client(self, subscriptions: Set[BaseSubscription]) -> None:
+        """Extend the locks on client subscriptions owned by this process.
 
         Args:
             subscriptions: A sequence of subscriptions to extend an owned lock for.
         """
         ...
 
-    async def client_poll(self, subscriptions: Sequence[BaseSubscription]) -> Set[BaseSubscription]:
-        """Poll subscriptions tied to the manager's client instance and see if
-        those subscriptions are still required.
+    async def extend_subscriber(self, subscriptions: Set[BaseSubscription]) -> None:
+        """Extend the registration on subscriber subscriptions owned by this process.
+
+        Args:
+            subscriptions: A sequence of subscriptions to extend a registration for.
+        """
+        ...
+
+    async def client_poll(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+        """Poll subscriptions tied to the manager's client.
         
-        In a distributed context, a subscriber in one process can be dependent
-        on the manager in a different process. So while the owning process for
-        a subscription may not require the subscription for any of its
-        subscribers, another process may still require it.
-        
-        This method returns subscriptions which can be unsubscribed from. In other
-        words, there is no active subscriber in the cluster requiring that
-        subscription.
+        This method returns subscriptions which can be unsubscribed from.
 
         Args:
             subscriptions: A sequence of subscriptions which the current process
                 is streaming data for.
         
         Returns:
-            subscriptions: The subscriptions which are not required anymore.
+            subscriptions: The subscriptions that can unsubscribed from.
         """
         ...
 
-    def subscriber_poll(self, subscriptions: Sequence[BaseSubscription]) -> Set[BaseSubscription]:
-        """Poll subscriptions in this process to ensure data is streaming from
-        at least one process in the cluster.
+    async def subscriber_poll(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+        """Poll subscriptions tied to the managers subscribers.
         
         This method returns subscriptions which are not being streamed by a manager
-        in the cluster. A manager instance which owns the subscriber may choose
-        to subscribe to the missing subscriptions on its client or stop the
-        subscriber.
+        in the cluster. A manager which owns the subscriber may choose to
+        subscribe to the missing subscriptions (after it acquires a lock), or
+        stop the subscriber.
 
         Args:
             subscriptions: A sequence of subscriptions which the current process
                 requires data to be streaming for.
 
         Returns:
-            subscriptions: The subscriptions are not being streamed anywhere
+            subscriptions: The subscriptions that are not being streamed anywhere
                 in the cluster.
         """
+        ...
+
+    def subscriber_key(self, subscription: BaseSubscription) -> str:
+        """Return the subscriber key from the subscription hash."""
         ...

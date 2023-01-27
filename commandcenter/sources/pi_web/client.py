@@ -38,7 +38,7 @@ def build_url(web_id_type: WebIdType, subscriptions: Set[PISubscription]) -> str
     return (
         "/piwebapi/streamsets/channel?webId="
         f"{'&webId='.join([subscription.web_id for subscription in subscriptions])}"
-        f"&webIdType={web_id_type}"
+        f"&webIdType={web_id_type}&includeInitialValues=True"
     )
 
 
@@ -98,11 +98,11 @@ class PIWebConnection(BaseConnection):
             close_timeout=close_timeout,
             max_msg_size=max_msg_size
         )
-        backoff = EqualJitterBackoff(max=max_backoff, initial=initial_backoff)
+        backoff = EqualJitterBackoff(cap=max_backoff, initial=initial_backoff)
         _LOGGER.debug(
             "Established connection for %i subscriptions",
             len(self._subscriptions),
-            extra={"url", url}
+            extra={"url": url}
         )
         try:
             while True:
@@ -338,6 +338,7 @@ class PIWebClient(BaseClient):
                         self._data
                     )
                 )
+                fut.add_done_callback(self.connection_lost)
                 connections[fut] = connection
                 break
             
@@ -350,6 +351,7 @@ class PIWebClient(BaseClient):
                         self._data
                     )
                 )
+                fut.add_done_callback(self.connection_lost)
                 connections[fut] = connection
                 del subscriptions[:self._max_subscriptions]
 

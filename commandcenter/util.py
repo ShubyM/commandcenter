@@ -217,8 +217,8 @@ def format_timeseries_rows(row: TimeseriesRow) -> List[JSONPrimitive]:
 class EqualJitterBackoff:
     """Equal jitter backoff upon failure"""
 
-    def __init__(self, max: float, initial: float):
-        self.max = max
+    def __init__(self, cap: float, initial: float):
+        self.cap=cap
         self.initial = initial
 
     def compute(self, failures):

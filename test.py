@@ -1,6 +1,6 @@
 from commandcenter.sources.pi_web import PISubscription, PIWebClient
 from commandcenter.http.aiohttp import create_auth_handlers, NegotiateAuth
-
+from commandcenter.integrations.models import DroppedConnection
 from aiohttp import ClientSession
 
 
@@ -25,7 +25,42 @@ subscriptions = [
     )
 ]
 
+subscriptions_2 = [
+    PISubscription(
+        web_id="F1DPEmoryo_bV0GzilxLXH31pgk4IAAAQUJDX1BJX09QU1xBSTY4MDA1OUEuUFY",
+        name="AI680059A.PV",
+    ),
+    PISubscription(
+        web_id="F1DPEmoryo_bV0GzilxLXH31pglIIAAAQUJDX1BJX09QU1xBSTY4MDA1OUIuUFY",
+        name="AI680059B.PV"
+    ),
+    PISubscription(
+        web_id="F1DPEmoryo_bV0GzilxLXH31pgl4IAAAQUJDX1BJX09QU1xBSUM2ODAwNTkuUFY",
+        name="AIC680059.PV"
+    )
+]
+
 
 async def main():
     req, rep = create_auth_handlers(NegotiateAuth())
-    session = 1
+    session = ClientSession(
+        base_url="wss://pivisionabc.abbvienet.com",
+        request_class=req,
+        response_class=rep
+    )
+    client = PIWebClient(
+        session=session
+    )
+    client.subscribe(set(subscriptions))
+    client.subscribe(set(subscriptions_2))
+    try:
+        await receive(client)
+    finally:
+        await client.close()
+
+
+if __name__ == "__main__":
+    import logging
+    import asyncio
+    logging.basicConfig(level=logging.DEBUG)
+    asyncio.run(main())
