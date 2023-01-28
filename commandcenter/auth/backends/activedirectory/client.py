@@ -1,5 +1,4 @@
 import asyncio
-import concurrent.futures
 import contextlib
 import logging
 import re
@@ -7,6 +6,7 @@ from collections import deque
 from collections.abc import Sequence
 from typing import AsyncGenerator, Deque
 
+import anyio
 from bonsai import LDAPClient, LDAPConnection, LDAPSearchScope
 from bonsai.errors import AuthenticationError
 from bonsai.pool import ConnectionPool
@@ -168,7 +168,7 @@ class ActiveDirectoryClient(AuthenticationClient):
             )
 
         self._lock: asyncio.Semaphore = asyncio.Semaphore(maxconn)
-        self._executor: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=maxconn)
+        self._limiter: anyio.CapacityLimiter = anyio.CapacityLimiter(maxconn)
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
     @property
@@ -193,9 +193,9 @@ class ActiveDirectoryClient(AuthenticationClient):
         url = self._controllers[0]
         async with self._lock:
             if pool.closed:
-                await self._loop.run_in_executor(self._executor, pool.open)
+                await anyio.to_thread.run_sync(pool.open, limiter=self._limiter)
             try:
-                conn = await self._loop.run_in_executor(self._executor, pool.get)
+                conn = await anyio.to_thread.run_sync(pool.get, limiter=self._limiter)
                 _LOGGER.debug("Connected to %s", url)
                 yield conn
             finally:
@@ -228,7 +228,7 @@ class ActiveDirectoryClient(AuthenticationClient):
             password=password
         )
         try:
-            with await self._loop.run_in_executor(self._executor, client.connect):
+            with await anyio.to_thread.run_sync(client.connect, limiter=self._limiter):
                 return True
         except AuthenticationError:
             return False
@@ -248,12 +248,12 @@ class ActiveDirectoryClient(AuthenticationClient):
         """
         async with self._get_connection() as conn:
             base = self._bases[0]
-            results = await self._loop.run_in_executor(
-                self._executor,
+            results = await anyio.to_thread.run_sync(
                 conn.search,
                 base,
                 LDAPSearchScope.SUB,
-                f"(&(objectCategory=user)(sAMAccountName={username}))"
+                f"(&(objectCategory=user)(sAMAccountName={username}))",
+                limiter=self._limiter
             )
             
             if len(results) < 1:

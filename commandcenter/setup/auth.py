@@ -1,7 +1,7 @@
 import functools
 from typing import Type
 
-from commandcenter.auth import AuthBackends, on_error
+from commandcenter.auth import AuthBackends
 from commandcenter.auth.base import BaseAuthenticationBackend, TokenHandler
 from commandcenter.auth.protocols import AuthenticationClient
 from commandcenter.caching import singleton

@@ -1,6 +1,6 @@
 from commandcenter.sources.pi_web import PISubscription, PIWebClient
 from commandcenter.http.aiohttp import create_auth_handlers, NegotiateAuth
-from commandcenter.integrations.models import DroppedConnection
+from commandcenter.integrations.models import DroppedSubscriptions
 from aiohttp import ClientSession
 
 
@@ -40,6 +40,9 @@ subscriptions_2 = [
     )
 ]
 
+
+async def test_lock():
+    pass
 
 async def main():
     req, rep = create_auth_handlers(NegotiateAuth())

@@ -172,14 +172,14 @@ class Subscriber(Protocol):
         """Returns a set of the subscriptions for this subscriber."""
         ...
 
-    def publish(self, data: str) -> None:
+    def publish(self, data: str | bytes) -> None:
         """Publish data to the subscriber.
         
         This method is called by the manager.
         """
         ...
     
-    def start(self, subscriptions: Set[BaseSubscription]) -> asyncio.Future:
+    def start(self, subscriptions: Set[BaseSubscription], maxlen: int) -> asyncio.Future:
         """Start the subscriber.
         
         This method is called by the manager.
@@ -210,6 +210,11 @@ class Subscriber(Protocol):
 
 
 class Lock:
+    @property
+    def ttl(self) -> float:
+        """The TTL used for locks in seconds."""
+        ...
+
     async def acquire(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
         """Acquire a lock for a subscription tied to a client.
         

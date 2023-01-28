@@ -119,6 +119,6 @@ class requires:
             return user
         else:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="User does not have the required scopes to access this resource."
             )

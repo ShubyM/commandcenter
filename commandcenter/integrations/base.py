@@ -233,7 +233,7 @@ class BaseSubscriber(Subscriber):
             else:
                 waiter.set_result(None)
 
-    def publish(self, data: str) -> None:
+    def publish(self, data: str | bytes) -> None:
         assert self._data is not None
         self._data.append(data)
         

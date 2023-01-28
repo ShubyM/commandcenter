@@ -12,8 +12,7 @@ formatters:
         datefmt: "%H:%M:%S"
 
     standard:
-        (): commandcenter.logging.formatters.StandardFormatter
-        exclude_fields: [process.pid, process.name, process.thread.id, process.thread.name]
+        (): commandcenter.logging.StandardFormatter
 
 
 filters:
@@ -21,11 +20,11 @@ filters:
         (): asgi_correlation_id.CorrelationIdFilter
         uuid_length: 32
     ip_address:
-        (): commandcenter.logging.filters.context.IPAddressFilter
+        (): commandcenter.logging.IPAddressFilter
     username:
-        (): commandcenter.logging.filters.context.UserFilter
+        (): commandcenter.logging.UserFilter
     host:
-        (): commandcenter.logging.filters.HostFilter
+        (): commandcenter.logging.HostFilter
 
 handlers:
     
@@ -37,7 +36,7 @@ handlers:
         class: logging.handlers.TimedRotatingFileHandler
         filename: commandcenter.log
         when: midnight
-        backupCount: 7
+        backupCount: 14
         formatter: standard
         filters: [correlation_id, ip_address, username, host]
 
@@ -61,7 +60,5 @@ loggers:
 
 # The root logger: any logger without propagation disabled sends to here as well
 root:
-    # By default, we send logs from any library to the same location as the
-    # commandcenter logger
     level: WARNING
     handlers: [rotate]

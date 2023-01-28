@@ -4,7 +4,6 @@ from typing import List
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.types import ASGIApp
 
 from commandcenter.auth import on_error
 from commandcenter.auth.debug import DebugAuthMiddleware

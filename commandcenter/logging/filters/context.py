@@ -1,7 +1,18 @@
 import logging
+import socket
 
 from commandcenter.context import ip_address_context, user_context
 
+
+
+HOST = socket.getaddrinfo(socket.gethostname(), 0, flags=socket.AI_CANONNAME)[0][3]
+
+
+class HostFilter(logging.Filter):
+    """Logging filter that adds the host to each log record."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.host = HOST
+        return True
 
 
 class IPAddressFilter(logging.Filter):
