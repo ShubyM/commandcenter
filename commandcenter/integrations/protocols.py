@@ -30,6 +30,11 @@ class Client(Protocol):
     def subscriptions(self) -> Set[BaseSubscription]:
         """Returns a set of the subscriptions from all connections."""
         ...
+
+    @property
+    def buffer(self) -> int:
+        """Returns the number of messages buffered on the client."""
+        ...
     
     async def close(self) -> None:
         """Close the client instance and shut down all connections."""
@@ -225,6 +230,10 @@ class Lock:
         Returns:
             subscriptions: The subscriptions for which a lock was successfully
                 acquired.
+        
+        Raises:
+            Exception: None of the locks were acquired or a best effort was made
+                to ensure no locks were acquired.
         """
         ...
 
@@ -233,6 +242,9 @@ class Lock:
 
         Args:
             subscriptions: A sequence of subscriptions to register.
+        
+        Raises:
+            None: Exceptions should be logged and swallowed.
         """
         ...
 
@@ -241,6 +253,12 @@ class Lock:
 
         Args:
             subscriptions: A sequence of subscriptions to release an owned lock for.
+
+        Returns:
+            subscriptions: The subscriptions which the lock was released.
+
+        Raises:
+            None: Exceptions should be logged and swallowed.
         """
         ...
 
@@ -249,6 +267,9 @@ class Lock:
 
         Args:
             subscriptions: A sequence of subscriptions to extend an owned lock for.
+
+        Raises:
+            None: Exceptions should be logged and swallowed.
         """
         ...
 
@@ -257,6 +278,9 @@ class Lock:
 
         Args:
             subscriptions: A sequence of subscriptions to extend a registration for.
+
+        Raises:
+            None: Exceptions should be logged and swallowed.
         """
         ...
 
@@ -271,6 +295,9 @@ class Lock:
         
         Returns:
             subscriptions: The subscriptions that can unsubscribed from.
+
+        Raises:
+            None: Exceptions should be logged and swallowed.
         """
         ...
 
@@ -289,9 +316,19 @@ class Lock:
         Returns:
             subscriptions: The subscriptions that are not being streamed anywhere
                 in the cluster.
+
+        Raises:
+            None: Exceptions should be logged and swallowed.
         """
         ...
 
     def subscriber_key(self, subscription: BaseSubscription) -> str:
-        """Return the subscriber key from the subscription hash."""
+        """Return the subscriber key from the subscription hash.
+        
+        Args:
+            subscription: The subscription to hash.
+
+        Returns:
+            hash: A hash derived from the subscription hash.
+        """
         ...

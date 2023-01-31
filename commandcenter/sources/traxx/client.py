@@ -197,6 +197,7 @@ class TraxxClient(BaseClient):
 
         self._client = client
         self._max_subscriptions = max_subscriptions
+        self._lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def capacity(self) -> int:
@@ -208,37 +209,40 @@ class TraxxClient(BaseClient):
 
     async def close(self) -> None:
         for fut, _ in self._connections.items(): fut.cancel()
-        await self._client.close()
+        if not self._client.session.closed:
+            await self._client.close()
 
     async def subscribe(self, subscriptions: Set[TraxxSubscription]) -> None:
         if self.closed:
             raise ClientClosed()
-
-        subscriptions = list(subscriptions.difference(self.subscriptions))
-        capacity = self.capacity
-        count = len(subscriptions)
         
-        if subscriptions and capacity >= count:
-            connections = await self._create_connections(subscriptions)
-            if connections is None:
+        async with self._lock:
+            subscriptions = list(subscriptions.difference(self.subscriptions))
+            capacity = self.capacity
+            count = len(subscriptions)
+            
+            if subscriptions and capacity >= count:
+                connections = await self._create_connections(subscriptions)
+                if connections is None:
+                    return False
+                self._connections.update(connections)
+            elif subscriptions and capacity < count:
                 return False
-            self._connections.update(connections)
-        elif subscriptions and capacity < count:
-            return False
-        return True
+            return True
 
     async def unsubscribe(self, subscriptions: Set[TraxxSubscription]) -> bool:
         if self.closed:
             raise ClientClosed()
 
-        not_applicable = subscriptions.difference(self.subscriptions)
-        subscriptions = subscriptions.difference(not_applicable)
+        async with self._lock:
+            not_applicable = subscriptions.difference(self.subscriptions)
+            subscriptions = subscriptions.difference(not_applicable)
 
-        if subscriptions:
-            for subscription in subscriptions:
-                for fut, connection in self._connections.items():
-                    if connection.subscription == subscription:
-                        fut.cancel()
+            if subscriptions:
+                for subscription in subscriptions:
+                    for fut, connection in self._connections.items():
+                        if connection.subscription == subscription:
+                            fut.cancel()
 
     async def _create_connections(
         self,

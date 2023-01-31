@@ -346,7 +346,6 @@ async def sse_handler(send: AsyncIterable[Any], logger: logging.Logger) -> Async
             yield msg
     except Exception:
         logger.error("Connection closed abnormally", exc_info=True)
-        raise
 
 
 async def ws_handler(

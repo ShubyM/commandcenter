@@ -7,7 +7,6 @@ from typing import List, Set
 import anyio
 try:
     from pymemcache import PooledClient as Memcached
-    from pymemcache.exceptions import MemcacheError
 except ImportError:
     pass
 try:
@@ -18,7 +17,6 @@ except ImportError:
 
 from commandcenter.caching import memo
 from commandcenter.integrations.base import BaseLock
-from commandcenter.integrations.exceptions import LockingError
 from commandcenter.integrations.models import BaseSubscription
 from commandcenter.util import ObjSelection
 
@@ -42,17 +40,6 @@ async def register_lua_script(script: str, _redis: Redis) -> str:
     return await _redis.script_load(script)
 
 
-async def redis_extend(redis: Redis, hashes: List[str], ttl: int) -> None:
-    """Runs a PEXPIRE command on a sequence of keys."""
-    try:
-        async with redis.pipeline(transaction=True) as pipe:
-            for hash_ in hashes:
-                pipe.pexpire(hash_, ttl)
-            await pipe.execute()
-    except RedisError:
-        _LOGGER.warning("Error in redis client", exc_info=True)
-
-
 async def redis_poll(
     redis: Redis,
     subscriptions: List[BaseSubscription],
@@ -66,10 +53,13 @@ async def redis_poll(
             for hash_ in hashes:
                 pipe.get(hash_)
             results = await pipe.execute()
-        return set([subscription for subscription, result in zip(subscriptions, results) if not result])
     except RedisError:
         _LOGGER.warning("Error in redis client", exc_info=True)
+        # For polling operations we assume the subscription exists or is still
+        # needed so we return an empty set
         return set()
+    else:
+        return set([subscription for subscription, result in zip(subscriptions, results) if not result])
 
 
 def memcached_poll(
@@ -82,10 +72,13 @@ def memcached_poll(
     """
     try:
         results = [memcached.get(hash_) for hash_ in hashes]
-        return set([subscription for subscription, result in zip(subscriptions, results) if not result])
-    except MemcacheError:
+    except Exception:
         _LOGGER.warning("Error in memcached client", exc_info=True)
-        #return set()
+        # For polling operations we assume the subscription exists or is still
+        # needed so we return an empty set
+        return set()
+    else:
+        return set([subscription for subscription, result in zip(subscriptions, results) if not result])
 
 
 def memcached_release(
@@ -93,30 +86,15 @@ def memcached_release(
     id_: bytes,
     hashes: List[str]
 ) -> None:
+    """Runs a GET command then deletes keys with a matching lock ID."""
     try:
         results = [memcached.get(hash_) for hash_ in hashes]
         hashes = [hash_ for hash_, result in zip(hashes, results) if result == id_]
         if hashes:
             memcached.delete_many(hashes)
-    except MemcacheError:
+    except Exception:
         _LOGGER.warning("Error in memcached client", exc_info=True)
 
-
-def memcached_extend(
-    memcached: Memcached,
-    id_: bytes,
-    hashes: List[str],
-    ttl: int
-) -> List[str]:
-    try:
-        results = [memcached.get(hash_) for hash_ in hashes]
-        hashes = [hash_ for hash_, result in zip(hashes, results) if result == id_]
-        if hashes:
-            values = {hash_: id_ for hash_ in hashes}
-            memcached.set_many(values, ttl)
-            _LOGGER.debug("Extended %i client subscriptions", len(hashes))
-    except MemcacheError:
-        _LOGGER.warning("Error in memcached client", exc_info=True)
 
 class RedisLock(BaseLock):
     """Lock implementation with Redis backend.
@@ -144,10 +122,11 @@ class RedisLock(BaseLock):
                 for hash_ in hashes:
                     pipe.set(hash_, id_, px=ttl, nx=True)
                 results = await pipe.execute()
-        except RedisError as e:
+        except RedisError:
             _LOGGER.warning("Error in redis client", exc_info=True)
-            raise LockingError() from e
-        return set([subscription for subscription, result in zip(subscriptions, results) if result])
+            raise
+        else:
+            return set([subscription for subscription, result in zip(subscriptions, results) if result])
 
     async def register(self, subscriptions: Set[BaseSubscription]) -> None:
         subscriptions = sorted(subscriptions)
@@ -180,12 +159,18 @@ class RedisLock(BaseLock):
     async def extend_client(self, subscriptions: Set[BaseSubscription]) -> None:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
-        await redis_extend(self._redis, hashes, self._ttl)
+        try:
+            async with self._redis.pipeline(transaction=True) as pipe:
+                id_ = self._id
+                ttl = self._ttl
+                for hash_ in hashes:
+                    pipe.set(hash_, id_, px=ttl)
+                await pipe.execute()
+        except RedisError:
+            _LOGGER.warning("Error in redis client", exc_info=True)
 
     async def extend_subscriber(self, subscriptions: Set[BaseSubscription]) -> None:
-        subscriptions = sorted(subscriptions)
-        hashes = [self.subscriber_key(subscription) for subscription in subscriptions]
-        await redis_extend(self._redis, hashes, self._ttl)
+        await self.register(subscriptions)
 
     async def client_poll(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
         subscriptions = sorted(subscriptions)
@@ -204,6 +189,7 @@ class MemcachedLock(BaseLock):
     Args:
         memcached: The memcached client.
         ttl: The time in milliseconds to acquire and extend locks for.
+        max_workers: The maximum number of threads that can execute memcached commands.
     """
     def __init__(self, memcached: "Memcached", ttl: int = 5000, max_workers: int = 4) -> None:
         self._memcached = memcached
@@ -232,10 +218,15 @@ class MemcachedLock(BaseLock):
                 for hash_ in hashes
             ]
             results = await asyncio.gather(*dispatch)
-        except MemcacheError as e:
+        except Exception:
             _LOGGER.warning("Error in memcached client", exc_info=True)
-            raise LockingError() from e
-        return set([subscription for subscription, stored in zip(subscriptions, results) if stored])
+            # With the Memcached lock we dont have the concept of a transaction
+            # so we cant know if some locks were acquired so we call release
+            # just in case
+            await self.release(subscriptions)
+            raise
+        else:
+            return set([subscription for subscription, stored in zip(subscriptions, results) if stored])
 
     async def register(self, subscriptions: Set[BaseSubscription]) -> None:
         subscriptions = sorted(subscriptions)
@@ -250,8 +241,7 @@ class MemcachedLock(BaseLock):
                 ttl,
                 limiter=self._limiter
             )
-            _LOGGER.debug("Registered %i subscriptions", len(hashes))
-        except MemcacheError:
+        except Exception:
             _LOGGER.warning("Error in memcached client", exc_info=True)
 
     async def release(self, subscriptions: Set[BaseSubscription]) -> None:
@@ -269,16 +259,18 @@ class MemcachedLock(BaseLock):
     async def extend_client(self, subscriptions: Set[BaseSubscription]) -> None:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
-        id_ = self._id.encode()
-        ttl = self._ttl
-        await anyio.to_thread.run_sync(
-            memcached_extend,
-            self._memcached,
-            id_,
-            hashes,
-            ttl,
-            limiter=self._limiter
-        )
+        try:
+            id_ = self._id
+            ttl = self._ttl
+            values = {hash_: id_ for hash_ in hashes}
+            await anyio.to_thread.run_sync(
+                self._memcached.set_many,
+                values,
+                ttl,
+                limiter=self._limiter
+            )
+        except Exception:
+            _LOGGER.warning("Error in memcached client", exc_info=True)
 
     async def extend_subscriber(self, subscriptions: Set[BaseSubscription]) -> None:
         await self.register(subscriptions)
@@ -307,6 +299,6 @@ class MemcachedLock(BaseLock):
 
 
 class Locks(ObjSelection):
-    DEFAULT = "default", MemcachedLock
+    DEFAULT = "default", RedisLock
     MEMCACHED = "memcached", MemcachedLock
     REDIS = "redis", RedisLock

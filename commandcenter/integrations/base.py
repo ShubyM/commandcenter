@@ -54,6 +54,10 @@ class BaseClient(Client):
                 subscriptions.update(connection.subscriptions)
         return subscriptions
 
+    @property
+    def buffer(self) -> int:
+        return self._data.qsize()
+
     async def close(self) -> None:
         raise NotImplementedError()
 

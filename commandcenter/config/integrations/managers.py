@@ -30,15 +30,15 @@ CC_INTEGRATIONS_MANAGER_TIMEOUT = config(
 CC_INTEGRATIONS_MANAGER_MAX_BACKOFF = config(
     "CC_INTEGRATIONS_MANAGER_MAX_BACKOFF",
     cast=float,
-    default=3
+    default=5
 )
 CC_INTEGRATIONS_MANAGER_INITIAL_BACKOFF = config(
     "CC_INTEGRATIONS_MANAGER_INITIAL_BACKOFF",
     cast=float,
-    default=0.5
+    default=1
 )
 CC_INTEGRATIONS_MANAGER_MAX_FAILED_ATTEMPTS = config(
     "CC_INTEGRATIONS_MANAGER_MAX_FAILED_ATTEMPTS",
     cast=int,
-    default=5
+    default=15
 )
