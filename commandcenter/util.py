@@ -222,7 +222,7 @@ class EqualJitterBackoff:
         self.initial = initial
 
     def compute(self, failures):
-        temp = min(self.max, self.initial * 2**failures) / 2
+        temp = min(self.cap, self.initial * 2**failures) / 2
         return temp + random.uniform(0, temp)
 
 

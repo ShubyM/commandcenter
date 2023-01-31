@@ -15,8 +15,8 @@ from typing import (
 )
 
 from commandcenter.integrations.models import BaseSubscription
-from commandcenter.timeseries.core.chunks import Chunk, TimeChunk
-from commandcenter.timeseries.core.timeseries import Timeseries
+from commandcenter.timeseries.chunks import Chunk, TimeChunk
+from commandcenter.timeseries.timeseries import Timeseries
 from commandcenter.types import TimeseriesRow
 
 

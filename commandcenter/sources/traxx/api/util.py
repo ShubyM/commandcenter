@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 from aiohttp import ClientResponse, ClientResponseError
 
-from commandcenter.exceptions import TraxxExpiredSession
+from commandcenter.sources.traxx.exceptions import TraxxExpiredSession
 from commandcenter.types import JSONPrimitive
 
 

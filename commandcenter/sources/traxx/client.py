@@ -3,17 +3,19 @@ import functools
 import logging
 import random
 from collections.abc import Awaitable
+from contextvars import Context
 from datetime import datetime, timedelta
-from typing import Callable, Dict, Set
+from typing import Callable, Dict, List, Set
 
 import pendulum
 from aiohttp import ClientSession
 from pydantic import ValidationError
 
-from commandcenter.exceptions import ClientClosed, SubscriptionLimitError, TraxxExpiredSession
 from commandcenter.integrations.base import BaseClient, BaseConnection
+from commandcenter.integrations.exceptions import ClientClosed
 from commandcenter.sources.traxx.api.client import TraxxAPI
 from commandcenter.sources.traxx.api.util import handle_request
+from commandcenter.sources.traxx.exceptions import TraxxExpiredSession
 from commandcenter.sources.traxx.models import TraxxSensorMessage, TraxxSubscription
 from commandcenter.util import TIMEZONE, EqualJitterBackoff
 
@@ -40,6 +42,7 @@ class TraxxConnection(BaseConnection):
 
     async def run(
         self,
+        confirm: asyncio.Future,
         client: TraxxAPI,
         update_interval: float,
         max_missed_updates: int,
@@ -55,8 +58,10 @@ class TraxxConnection(BaseConnection):
         last_timestamp: datetime = None
         attempts = 0
 
-        backoff = EqualJitterBackoff(max=update_interval, initial=initial_backoff)
-
+        backoff = EqualJitterBackoff(cap=update_interval, initial=initial_backoff)
+        if confirm.done():
+            raise RuntimeError("Confirm finished but task was not cancelled.")
+        confirm.set_result(None)
         while True:
             now = datetime.now()
             start_time = min(last_update or now, now-timedelta(minutes=15))
@@ -136,13 +141,30 @@ class TraxxConnection(BaseConnection):
     ) -> None:
         self._subscriptions.update(subscriptions)
         self._data = data
-        await self.run(
-            client=client,
-            update_interval=update_interval,
-            max_missed_updates=max_missed_updates,
-            initial_backoff=initial_backoff,
-            timezone=timezone
+        confirm = self._loop.create_future()
+        runner = Context().run(
+            self._loop.create_task,
+            self.run(
+                confirm,
+                client=client,
+                update_interval=update_interval,
+                max_missed_updates=max_missed_updates,
+                initial_backoff=initial_backoff,
+                timezone=timezone
+            )
         )
+        try:
+            await asyncio.wait([runner, confirm], return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            runner.cancel()
+            confirm.cancel()
+            raise
+        if not confirm.done():
+            e = runner.exception()
+            if e is not None:
+                raise e
+            raise RuntimeError("Runner exited without throwing exception.")
+        return runner
 
 
 class TraxxClient(BaseClient):
@@ -188,7 +210,7 @@ class TraxxClient(BaseClient):
         for fut, _ in self._connections.items(): fut.cancel()
         await self._client.close()
 
-    def subscribe(self, subscriptions: Set[TraxxSubscription]) -> None:
+    async def subscribe(self, subscriptions: Set[TraxxSubscription]) -> None:
         if self.closed:
             raise ClientClosed()
 
@@ -196,31 +218,16 @@ class TraxxClient(BaseClient):
         capacity = self.capacity
         count = len(subscriptions)
         
-        if subscriptions and capacity > count:
-            connections: Dict[asyncio.Task, TraxxConnection] = {}
-            for subscription in subscriptions:
-                connection = TraxxConnection()
-                fut = self._loop.create_task(
-                    self._start_connection(
-                        connection,
-                        set([subscription]),
-                        self._data
-                    )
-                )
-                connections[fut] = connection
+        if subscriptions and capacity >= count:
+            connections = await self._create_connections(subscriptions)
+            if connections is None:
+                return False
             self._connections.update(connections)
-        else:
-            raise SubscriptionLimitError(self._max_subscriptions)
+        elif subscriptions and capacity < count:
+            return False
+        return True
 
-    def unsubscribe(self, subscriptions: Set[TraxxSubscription]) -> bool:
-        """Unsubscribe the client from a sequence of Traxx sensors.
-        Args:
-            subscriptions: The sequence of subscriptions to subscribe to
-        Returns:
-            result: A boolean indicating the success of the operation. `True` means
-                that all subscriptions were successfully subscribed to. `False` means
-                that none of the subscriptions were subscribed to
-        """
+    async def unsubscribe(self, subscriptions: Set[TraxxSubscription]) -> bool:
         if self.closed:
             raise ClientClosed()
 
@@ -232,3 +239,35 @@ class TraxxClient(BaseClient):
                 for fut, connection in self._connections.items():
                     if connection.subscription == subscription:
                         fut.cancel()
+
+    async def _create_connections(
+        self,
+        subscriptions: Set[TraxxSubscription]
+    ) -> Dict[asyncio.Future, TraxxConnection] | None:
+        """Create connections to support all subscriptions."""
+        connections: List[TraxxConnection] = []
+        starters: List[Awaitable[asyncio.Future]] = []
+        for subscription in subscriptions:
+                connection = TraxxConnection()
+                starters.append(
+                    self._start_connection(
+                        connection,
+                        set([subscription]),
+                        self._data
+                    )
+                )
+                connections.append(connection)
+        
+        results = await asyncio.gather(*starters, return_exceptions=True)
+        if any([isinstance(result, Exception) for result in results]):
+            for result in results:
+                if isinstance(result, asyncio.Future):
+                    result.cancel()
+                elif isinstance(result, Exception):
+                    _LOGGER.warning("Connection failed to start", exc_info=result)
+            return None
+
+        for fut in results:
+            fut.add_done_callback(self.connection_lost)
+
+        return {fut: connection for fut, connection in zip(results, connections)}

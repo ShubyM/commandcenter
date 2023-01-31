@@ -376,7 +376,12 @@ class PISubscriberItem(PIBaseSubscriberMessage):
 
     def subscription_message(self, subscription: PISubscription) -> str:
         """JSON representation of subscription with items."""
-        return orjson.dumps({"subscription": subscription, "items": self.items}).decode()
+        return orjson.dumps(
+            {
+                "subscription": subscription.dict(),
+                "items": self.dict()["items"]
+            }
+        ).decode()
 
 
 class PISubscriberMessage(PIBaseSubscriberMessage):

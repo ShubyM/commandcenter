@@ -7,7 +7,7 @@ from contextlib import suppress
 from types import TracebackType
 from typing import Any, Deque, Dict, Set, Type
 
-from commandcenter.exceptions import ClientClosed
+from commandcenter.integrations.exceptions import ClientClosed
 from commandcenter.integrations.models import (
     BaseSubscription,
     DroppedSubscriptions,
@@ -159,6 +159,7 @@ class BaseManager(Manager):
         self._max_subscribers = max_subscribers
         self._maxlen = maxlen
 
+        self._background: Set[asyncio.Task] = set()
         self._subscribers: Dict[asyncio.Task, Subscriber] = {}
         self._event: asyncio.Event = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()

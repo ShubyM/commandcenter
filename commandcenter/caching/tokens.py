@@ -1,4 +1,4 @@
-from typing import Any, Protocol
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -19,7 +19,7 @@ class Tokenable(BaseModel):
         raise NotImplementedError()
 
 
-@memo(backend="disk")
+@memo
 def cache_tokenable(
     token: str,
     _obj: Tokenable | None = None

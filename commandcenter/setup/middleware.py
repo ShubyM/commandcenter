@@ -72,4 +72,4 @@ def setup_middleware() -> List[Middleware]:
     setup_auth_middleware(stack=stack)
     if CC_MIDDLEWARE_ENABLE_CONTEXT:
         setup_context_middleware(stack=stack)
-    return list(reversed(stack))
+    return stack

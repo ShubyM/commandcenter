@@ -3,12 +3,13 @@ from typing import Any, Dict, Tuple, Type
 from commandcenter.caching import singleton
 from commandcenter.config import CC_TIMEZONE
 from commandcenter.exceptions import NotConfigured
+from commandcenter.integrations.managers import Managers
 from commandcenter.integrations.protocols import Client, Manager
 
 
 
 def resolve_pi_web_client_dependencies(
-    _: Manager # TODO: Manager will be used when Redis and RabbitMQ integrations go in
+    manager: Manager
 ) -> Tuple[Type[Client], Tuple[Any], Dict[str, Any], Dict[str, Any]]:
     """Return all objects for the manager to initialize and support a PI client."""
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
@@ -20,6 +21,7 @@ def resolve_pi_web_client_dependencies(
         CC_SOURCES_PIWEB_AUTH_PASSWORD,
         CC_SOURCES_PIWEB_AUTH_SERVICE,
         CC_SOURCES_PIWEB_AUTH_USERNAME,
+        CC_SOURCES_PIWEB_CHANNEL_NAME,
         CC_SOURCES_PIWEB_HTTP_KEEPALIVE_TIMEOUT,
         CC_SOURCES_PIWEB_HTTP_REQUEST_TIMEOUT,
         CC_SOURCES_PIWEB_WS_BASE_URL,
@@ -75,8 +77,10 @@ def resolve_pi_web_client_dependencies(
         "max_msg_size": CC_SOURCES_PIWEB_WS_MAX_MESSAGE_SIZE,
         "timezone": CC_TIMEZONE
     }
-
-    return PIWebClient, args, kwargs, {}
+    add_kwargs = {}
+    if manager in (Managers.REDIS.cls, Managers.RABBITMQ.cls):
+        add_kwargs["channel_name"] = CC_SOURCES_PIWEB_CHANNEL_NAME
+    return PIWebClient, args, kwargs, add_kwargs
 
 
 @singleton

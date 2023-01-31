@@ -18,7 +18,6 @@ def get_cached_reference(obj: Type[Tokenable], raise_on_miss: bool = True) -> An
                     detail="Token was not found or it has expired."
                 )
             return
-        print(type(ret))
         if not isinstance(ret, obj):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

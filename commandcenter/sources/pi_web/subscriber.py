@@ -26,11 +26,10 @@ class PISubscriber(BaseSubscriber):
         ref: Dict[str, datetime] = {
             subscription.web_id: None for subscription in self._subscriptions
         }
-        web_ids = {subscription.web_id for subscription in self._subscriptions}
         index = {subscription.web_id: subscription for subscription in self._subscriptions}
         while not self.stopped:
             if not self._data:
-                code = await self.wait_for_data()
+                code = await self.wait()
                 if code is SubscriberCodes.STOPPED:
                     return
             # Pop messages from the data queue until there are no messages
@@ -55,7 +54,7 @@ class PISubscriber(BaseSubscriber):
                 for item in data.items:
                     web_id = item.web_id
                     timestamp = item.items[-1].timestamp # Most recent timestamp
-                    if web_id in web_ids:
+                    if web_id in index:
                         # Only yield the data if the timestamp is greater than
                         # the last for this WebId
                         last = ref.get(web_id)

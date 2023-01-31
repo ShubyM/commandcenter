@@ -28,7 +28,7 @@ class TraxxSubscriber(BaseSubscriber):
         }
         while not self.stopped:
             if not self._data:
-                code = await self.wait_for_data()
+                code = await self.wait()
                 if code is SubscriberCodes.STOPPED:
                     return
             # Pop messages from the data queue until there are no messages

@@ -10,7 +10,7 @@ import threading
 import types
 import warnings
 from datetime import timedelta
-from typing import Any, Callable, Dict, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar
 
 try:
     from redis import Redis
@@ -34,7 +34,7 @@ from commandcenter.caching.core.caches import (
     MemoCache,
     RedisCache
 )
-from commandcenter.caching.core.util import CacheType
+from commandcenter.caching.core.util import CacheType, is_type
 from commandcenter.util import ObjSelection
 from commandcenter.__version__ import __title__ as DIR_NAME
 
@@ -55,16 +55,14 @@ class MemoizedFunction(CachedFunction):
     def __init__(
         self,
         func: types.FunctionType,
-        backend: str,
+        backend: Callable[[], caches],
         max_entries: int | None,
-        ttl: float | None,
-        **kwargs: Any
+        ttl: float | None
     ):
         super().__init__(func)
         self.backend = backend
         self.max_entries = max_entries
         self.ttl = ttl
-        self.kwargs = kwargs
 
     @property
     def cache_type(self) -> CacheType:
@@ -82,8 +80,7 @@ class MemoizedFunction(CachedFunction):
             backend=self.backend,
             max_entries=self.max_entries,
             ttl=self.ttl,
-            display_name=self.display_name,
-            **self.kwargs
+            display_name=self.display_name
         )
 
 
@@ -97,17 +94,16 @@ class MemoCaches:
         self,
         func: Callable[[Any], Any],
         key: str,
-        backend: str | None,
+        backend: Callable[[], caches],
         max_entries: int | float | None,
         ttl: int | float | None,
-        display_name: str,
-        **kwargs: Any
+        display_name: str
     ) -> MemoCache:
         """Return the cache for the given key.
 
         If it doesn't exist, create a new one with the given params.
         """
-        backend: Type[Cache] = caches(backend).cls if backend is not None else caches.MEMORY.cls
+        backend, kwargs, ttl = configure_cache(backend, ttl)
         if backend is not caches.MEMORY.cls:
             if max_entries is None:
                 max_entries = 100
@@ -175,6 +171,53 @@ def make_cache_path(cache_dir: pathlib.Path) -> bool:
         return True
 
 
+def configure_cache(
+    backend: Callable[[], caches],
+    ttl: int | float | None,
+) -> Tuple[Type[Cache], Dict[str, Any], int | None]:
+    backend_kwargs = {}
+
+    backend = backend()
+    if backend is caches.REDIS:
+        if not memo._redis:
+            memo.set_redis_client(None)
+        assert is_type(memo._redis, "redis.client.Redis"), "Client not set to Redis instance."
+        backend_kwargs["redis"] = lambda: memo._redis
+    elif backend is caches.MEMCACHED:
+        if not memo._memcached:
+            memo.set_memcached_client(None)
+        assert is_type(memo._memcached, "pymemcache.client.base.PooledClient"), "Client not set to PooledClient instance."
+        backend_kwargs["memcached"] = lambda: memo._memcached
+    elif backend is caches.DISK:
+        if not make_cache_path(memo._cache_dir):
+            warnings.warn(
+                "Failed to create the cache directory. Memoized objects cannot be "
+                "persisted to disk. Objects will be stored in memory.",
+                stacklevel=2
+            )
+            backend = caches.MEMORY
+        else:
+            backend_kwargs["cache_dir"] = lambda: memo._cache_dir
+            
+    if backend is caches.REDIS or backend is caches.MEMCACHED and ttl is None:
+        warnings.warn(
+            "'ttl' cannot be 'None' when using the redis | memcached "
+            "backends. Setting to 86400 seconds",
+            stacklevel=2
+        )
+        ttl = 86400
+
+    return backend.cls, backend_kwargs, ttl
+
+
+def get_cache_control(backend: Callable[[], caches], ttl: int | None) -> int:
+    if backend is caches.REDIS or backend is caches.MEMCACHED and ttl is None:
+        return 86_400
+    elif ttl is None or ttl > 31536000 or backend is caches.DISK:
+        return 31_536_000
+    else:
+        return ttl
+
 class MemoAPI:
     """Implements the public memo API: the `@memo` decorator, and `memo.clear()`."""
     F = TypeVar("F", bound=Callable[..., Any])
@@ -183,6 +226,7 @@ class MemoAPI:
     _cache_dir: pathlib.Path = pathlib.Path("~").expanduser().joinpath(f".{DIR_NAME}/.cache")
     _redis: "Redis" = None
     _memcached: "Memcached" = None
+    _default_backend: caches = caches.MEMORY
 
     def __call__(
         self,
@@ -303,59 +347,24 @@ class MemoAPI:
         memoize function directly...
         >>> ttl = fetch_and_clean_data.ttl
         """
-        backend_kwargs = {}
-
-        try:
-            backend = caches(backend.lower()) if backend else caches.MEMORY
-        except ValueError:
-            warnings.warn(
-                f"Invalid backend '{backend}', defaulting to memory backend.",
-                stacklevel=2
-            )
-            backend = caches.MEMORY
-        if backend is caches.REDIS and self._redis is None:
-            self.set_redis_client(None)
-            assert isinstance(self._redis, Redis), "Client not set to Redis instance."
-            backend_kwargs["redis"] = lambda: memo._redis
-        elif backend is caches.MEMCACHED:
-            self.set_memcached_client(None)
-            assert isinstance(self._memcached, Memcached), "Client not set to PooledClient instance."
-            backend_kwargs["memcached"] = lambda: memo._memcached
-        elif backend is caches.DISK:
-            if not make_cache_path(self._cache_dir):
-                warnings.warn(
-                    "Failed to create the cache directory. Memoized objects cannot be "
-                    "persisted to disk. Objects will be stored in memory.",
-                    stacklevel=2
-                )
-                backend = caches.MEMORY
-            else:
-                backend_kwargs["cache_dir"] = lambda: memo._cache_dir
-
-        ttl_seconds: float | None = None
+        if backend is not None:
+            backend_callable = lambda: caches(backend)
+        else:
+            backend_callable = lambda: memo._default_backend
 
         if isinstance(ttl, timedelta):
             ttl_seconds = ttl.total_seconds()
         else:
-            if backend is caches.REDIS or backend is caches.MEMCACHED and ttl is None:
-                warnings.warn(
-                    "'ttl' cannot be 'None' when using the redis | memcached "
-                    "backends. Setting to 86400 seconds",
-                    stacklevel=2
-                )
-                ttl = 86400
             ttl_seconds = ttl
-
-        backend_kwargs.update(
-            {
-                "backend": backend.value,
-                "max_entries": max_entries,
-                "ttl": ttl_seconds
-            }
-        )
+        
         if func is None:
             def decorator(f):
-                cached_func = MemoizedFunction(f, **backend_kwargs)
+                cached_func = MemoizedFunction(
+                    f,
+                    backend=backend_callable,
+                    max_entries=max_entries,
+                    ttl=ttl_seconds
+                )
                 if inspect.iscoroutinefunction(f):
                     partial = functools.partial(wrap_async, cached_func)
                 else:
@@ -363,15 +372,17 @@ class MemoAPI:
                 partial.clear = functools.partial(clear_cached_func, cached_func)
 
                 # This is only useful for cache control headers in API responses
-                if ttl_seconds is None or ttl_seconds > 31536000 or backend is caches.DISK:
-                    partial.ttl = 31536000
-                else:
-                    partial.ttl = ttl_seconds
+                partial.ttl = lambda: get_cache_control(backend, ttl_seconds)
                 return partial
             return decorator
         
         else:
-            cached_func = MemoizedFunction(func, **backend_kwargs)
+            cached_func = MemoizedFunction(
+                func,
+                backend=backend_callable,
+                max_entries=max_entries,
+                ttl=ttl_seconds
+            )
             if inspect.iscoroutinefunction(func):
                 partial = functools.partial(wrap_async, cached_func)
             else:
@@ -379,16 +390,18 @@ class MemoAPI:
             partial.clear = functools.partial(clear_cached_func, cached_func)
 
             # This is only useful for cache control headers in API responses
-            if ttl_seconds is None or ttl_seconds > 31536000 or backend is caches.DISK:
-                partial.ttl = 31536000
-            else:
-                partial.ttl = ttl_seconds
+            partial.ttl = lambda: get_cache_control(backend, ttl_seconds)
             return partial
 
     @staticmethod
     def clear() -> None:
         """Clear all in-memory and on-disk memo caches."""
         _memo_caches.clear_all()
+
+    @classmethod
+    def set_default_backend(cls, backend: str) -> None:
+        with cls._lock:
+            cls._default_backend = caches(backend)
 
     @classmethod
     def set_cache_dir(cls, cache_dir: os.PathLike) -> None:

@@ -121,3 +121,9 @@ CC_SOURCES_PIWEB_WS_MAX_MESSAGE_SIZE = config(
     cast=int,
     default=client_parameters["max_msg_size"].default
 )
+
+
+CC_SOURCES_PIWEB_CHANNEL_NAME = config(
+    "CC_SOURCES_PIWEB_CHANNEL_NAME",
+    default="commandcenter.sources.piweb"
+)

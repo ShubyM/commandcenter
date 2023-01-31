@@ -23,7 +23,7 @@ from commandcenter.dependencies import (
     requires,
     source
 )
-from commandcenter.exceptions import SubscriptionError
+from commandcenter.integrations.exceptions import SubscriptionError
 from commandcenter.integrations.util import iter_subscriber
 from commandcenter.integrations.protocols import Manager
 from commandcenter.sources import Sources

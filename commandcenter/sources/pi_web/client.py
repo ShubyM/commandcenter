@@ -3,6 +3,7 @@ import functools
 import logging
 import math
 from collections.abc import Awaitable, Iterable
+from contextvars import Context
 from typing import (
     Callable,
     Dict,
@@ -15,8 +16,8 @@ from aiohttp import ClientSession, ClientWebSocketResponse
 from pendulum.tz.zoneinfo.exceptions import InvalidTimezone
 from pydantic import ValidationError
 
-from commandcenter.exceptions import ClientClosed, SubscriptionLimitError
 from commandcenter.integrations.base import BaseClient, BaseConnection
+from commandcenter.integrations.exceptions import ClientClosed
 from commandcenter.sources.pi_web.models import (
     PIMessage,
     PISubscription,
@@ -75,6 +76,7 @@ class PIWebConnection(BaseConnection):
 
     async def run(
         self,
+        confirm: asyncio.Future,
         session: ClientSession,
         web_id_type: WebIdType,
         max_reconnect_attempts: int,
@@ -98,12 +100,17 @@ class PIWebConnection(BaseConnection):
             close_timeout=close_timeout,
             max_msg_size=max_msg_size
         )
-        backoff = EqualJitterBackoff(cap=max_backoff, initial=initial_backoff)
+        backoff = EqualJitterBackoff(max_backoff, initial_backoff)
         _LOGGER.debug(
             "Established connection for %i subscriptions",
             len(self._subscriptions),
             extra={"url": url}
         )
+        if confirm.done():
+            await ws.close()
+            raise RuntimeError("Confirm finished but task was not cancelled.")
+        confirm.set_result(None)
+
         try:
             while True:
                 async for msg in ws:
@@ -190,21 +197,38 @@ class PIWebConnection(BaseConnection):
         close_timeout: float,
         max_msg_size: int,
         timezone: str
-    ) -> None:
+    ) -> asyncio.Future:
         self._subscriptions.update(subscriptions)
         self._data = data
-        await self.run(
-            session=session,
-            web_id_type=web_id_type,
-            max_reconnect_attempts=max_reconnect_attempts,
-            initial_backoff=initial_backoff,
-            max_backoff=max_backoff,
-            protocols=protocols,
-            heartbeat=heartbeat,
-            close_timeout=close_timeout,
-            max_msg_size=max_msg_size,
-            timezone=timezone
+        confirm = self._loop.create_future()
+        runner = Context().run(
+            self._loop.create_task,
+            self.run(
+                confirm,
+                session=session,
+                web_id_type=web_id_type,
+                max_reconnect_attempts=max_reconnect_attempts,
+                initial_backoff=initial_backoff,
+                max_backoff=max_backoff,
+                protocols=protocols,
+                heartbeat=heartbeat,
+                close_timeout=close_timeout,
+                max_msg_size=max_msg_size,
+                timezone=timezone
+            )
         )
+        try:
+            await asyncio.wait([runner, confirm], return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            runner.cancel()
+            confirm.cancel()
+            raise
+        if not confirm.done():
+            e = runner.exception()
+            if e is not None:
+                raise e
+            raise RuntimeError("Runner exited without throwing exception.")
+        return runner
 
 
 class PIWebClient(BaseClient):
@@ -249,11 +273,12 @@ class PIWebClient(BaseClient):
         self._max_capacity = max_connections * max_subscriptions
         self._max_subscriptions = max_subscriptions
         
-        self._consolidation: asyncio.Task = None
+        self._consolidation: asyncio.Task = Context().run(
+            self._loop.create_task,
+            self._run_consolidation()
+        )
         self._event: asyncio.Event = asyncio.Event()
         self._close_called: bool = False
-
-        self._start(None)
     
     @property
     def capacity(self) -> int:
@@ -272,7 +297,7 @@ class PIWebClient(BaseClient):
         for fut, _ in self._connections.items(): fut.cancel()
         await self._session.close()
 
-    def subscribe(self, subscriptions: Set[PISubscription]) -> None:
+    async def subscribe(self, subscriptions: Set[PISubscription]) -> bool:
         if self.closed:
             raise ClientClosed()
 
@@ -280,15 +305,20 @@ class PIWebClient(BaseClient):
         capacity = self.capacity
         count = len(subscriptions)
         
-        if subscriptions and capacity > count:
-            connections = self._create_connections(subscriptions)
+        if subscriptions and capacity >= count:
+            connections = await self._create_connections(subscriptions)
+            if connections is None:
+                return False
             self._connections.update(connections)
+            for connection in connections.values():
+                connection.toggle()
             self._event.set()
             _LOGGER.debug("Subscribed to %i subscriptions", count)
-        else:
-            raise SubscriptionLimitError(self._max_capacity)
+        elif subscriptions and capacity < count:
+            return False
+        return True
 
-    def unsubscribe(self, subscriptions: Set[PISubscription]) -> bool:
+    async def unsubscribe(self, subscriptions: Set[PISubscription]) -> bool:
         if self.closed:
             raise ClientClosed()
 
@@ -309,53 +339,72 @@ class PIWebClient(BaseClient):
                     to_keep.extend(connection.subscriptions.difference(subscriptions))
             
             if to_keep:
-                connections = self._create_connections(to_keep)
+                connections = await self._create_connections(to_keep)
+                if connections is None:
+                    return False
                 self._connections.update(connections)
+                for connection in connections.values():
+                    connection.toggle()
             
-            for fut in to_cancel.keys():
+            # We only close the other connections if there were no connections
+            # to keep or the other connections started up correctly
+            for fut, connection in to_cancel.items():
+                connection.toggle()
                 fut.cancel()
             
             self._event.set()
             _LOGGER.debug("Unsubscribed from %i subscriptions", len(subscriptions))
+        return True
 
-    def _create_connections(self, subscriptions: List[str]) -> Dict[asyncio.Task, PIWebConnection]:
-        """Creates the appropriate number of connections to support all
+    async def _create_connections(
+        self,
+        subscriptions: List[str]
+    ) -> Dict[asyncio.Task, PIWebConnection] | None:
+        """Creates the optimal number of connections to support all
         subscriptions.
-        
-        You can stream multiple PI tags on a single websocket connection. You are
-        only limited by the length of the URL.
         """
-        connections: Dict[asyncio.Task, PIWebConnection] = {}
-        
+        connections: List[PIWebConnection] = []
+        starters: List[Awaitable[asyncio.Future]] = []
         while True:
             if len(subscriptions) <= self._max_subscriptions:
                 # This connection will cover the remaining
                 connection = PIWebConnection(max_subscriptions=self._max_subscriptions)
-                fut = self._loop.create_task(
+                starters.append(
                     self._start_connection(
                         connection,
                         set(subscriptions),
                         self._data
                     )
                 )
-                fut.add_done_callback(self.connection_lost)
-                connections[fut] = connection
+                connections.append(connection)
                 break
             
-            else: # More connections are required
+            else:
+                # More connections are required
                 connection = PIWebConnection(max_subscriptions=self._max_subscriptions)
-                fut = self._loop.create_task(
+                starters.append(
                     self._start_connection(
                         connection,
                         set(subscriptions[:self._max_subscriptions]),
                         self._data
                     )
                 )
-                fut.add_done_callback(self.connection_lost)
-                connections[fut] = connection
+                connections.append(connection)
                 del subscriptions[:self._max_subscriptions]
 
-        return connections
+        results = await asyncio.gather(*starters, return_exceptions=True)
+        if any([isinstance(result, Exception) for result in results]):
+            for result in results:
+                if isinstance(result, asyncio.Future):
+                    result.cancel()
+                elif isinstance(result, Exception):
+                    _LOGGER.warning("Connection failed to start", exc_info=result)
+            return None
+
+        for fut in results:
+            fut.add_done_callback(self.connection_lost)
+
+        return {fut: connection for fut, connection in zip(results, connections)}
 
     async def _run_consolidation(self) -> None:
         """Ensures the optimal number of websocket connections are open.
@@ -367,51 +416,45 @@ class PIWebClient(BaseClient):
         """
         while True:
             await self._event.wait()
+            self._event.clear()
             await asyncio.sleep(5)
 
-            try:
-                _LOGGER.debug("Scanning connections for consolidation")
-                has_capacity = {
-                    fut: connection for fut, connection in self._connections.items()
-                    if len(connection.subscriptions) < self._max_subscriptions
-                }
-                capacity = sum(
-                    [
-                        len(connection.subscriptions) for connection
-                        in has_capacity.values()
-                    ]
-                )
-                optimal = math.ceil(capacity/self._max_subscriptions)
-                
-                if optimal == len(has_capacity):
-                    _LOGGER.debug("Optimal number of active connection")
-                    continue
-
-                _LOGGER.debug("Consolidating connections")
-                
-                subscriptions = []
-                for connection in has_capacity.values():
-                    subscriptions.extend(connection.subscriptions)
-                
-                connections = self._create_connections(subscriptions)
-                self._connections.update(connections)
-
-                for fut in has_capacity.keys():
-                    fut.cancel()
-                
-                _LOGGER.debug(
-                    "Consolidated %i connections",
-                    len(has_capacity)-len(connections)
-                )
+            _LOGGER.debug("Scanning connections for consolidation")
+            has_capacity = {
+                fut: connection for fut, connection in self._connections.items()
+                if len(connection.subscriptions) < self._max_subscriptions
+            }
+            capacity = sum(
+                [
+                    len(connection.subscriptions) for connection
+                    in has_capacity.values()
+                ]
+            )
+            optimal = math.ceil(capacity/self._max_subscriptions)
             
-            finally:
-                self._event.clear()
+            if optimal == len(has_capacity):
+                _LOGGER.debug("Optimal number of active connection")
+                continue
 
-    def _start(self, _: asyncio.Future | None) -> None:
-        """Ensures the cosolidation background task is always running."""
-        if self.closed or self._close_called:
-            return
-        self._consolidation = None
-        fut = self._loop.create_task(self._run_consolidation())
-        fut.add_done_callback(self._start)
-        self._consolidation = fut
+            _LOGGER.debug("Consolidating connections")
+            
+            subscriptions = []
+            for connection in has_capacity.values():
+                subscriptions.extend(connection.subscriptions)
+            
+            connections = await self._create_connections(subscriptions)
+            if connections is None:
+                _LOGGER.info("Consolidation failed, unable to start up supplemental connections")
+                continue
+            self._connections.update(connections)
+            for connection in connections.values():
+                connection.toggle()
+
+            for fut, connection in has_capacity.items():
+                connection.toggle()
+                fut.cancel()
+            
+            _LOGGER.debug(
+                "Consolidated %i connections",
+                len(has_capacity)-len(connections)
+            )

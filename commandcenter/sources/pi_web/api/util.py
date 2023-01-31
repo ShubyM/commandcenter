@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import orjson
 from aiohttp import ClientResponse, ClientResponseError
 
-from commandcenter.exceptions import PIWebResponseError
+from commandcenter.sources.pi_web.exceptions import PIWebResponseError
 from commandcenter.types import JSONContent, JSONPrimitive
 from commandcenter.util import split_range
 

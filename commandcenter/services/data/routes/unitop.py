@@ -21,7 +21,7 @@ from commandcenter.dependencies import (
     get_reference_token,
     requires
 )
-from commandcenter.exceptions import SubscriptionError
+from commandcenter.integrations.exceptions import SubscriptionError
 from commandcenter.integrations.models import (
     AnySubscriberMessage,
     AnySubscriptionRequest,
@@ -63,7 +63,7 @@ async def get_subscribers(
     
     for source in groups.keys():
         # User must be authorized for subscriptions to all sources
-        REQUIRES[source](request=request)
+        await REQUIRES[source](request=request)
         with set_source(source):
             manager = await get_manager()
             managers[source] = manager

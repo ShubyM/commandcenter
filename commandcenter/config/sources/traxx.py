@@ -66,3 +66,9 @@ CC_SOURCES_TRAXX_STREAM_INITIAL_BACKOFF = config(
     cast=float,
     default=client_parameters["initial_backoff"].default
 )
+
+
+CC_SOURCES_TRAXX_CHANNEL_NAME = config(
+    "CC_SOURCES_TRAXX_CHANNEL_NAME",
+    default="commandcenter.sources.traxx"
+)

@@ -2,11 +2,13 @@ import asyncio
 import logging
 import random
 from collections.abc import Sequence
-from typing import Set, Type
+from contextvars import Context
+from typing import Callable, Type
 
 import anyio
 try:
     from redis.asyncio import Redis
+    from redis.asyncio.client import PubSub
     from redis.exceptions import RedisError
 except ImportError:
     pass
@@ -14,6 +16,7 @@ try:
     from aiormq import Connection
     from aiormq.abc import DeliveredMessage
     from aiormq.exceptions import AMQPError
+    from pamqp.exceptions import PAMQPException
 except ImportError:
     pass
 
@@ -49,7 +52,6 @@ class LocalManager(BaseManager):
         super().__init__(client, subscriber, max_subscribers, maxlen)
         
         self._runner: asyncio.Task = self._loop.create_task(self._run())
-        self._background: Set[asyncio.Task] = set()
 
     @property
     def closed(self) -> bool:
@@ -168,48 +170,21 @@ class LocalManager(BaseManager):
             raise
 
 
-class RabbitMQManager(BaseManager):
-    """A manager for distributed environments backed by RabbitMQ."""
+class _DistributedManager(BaseManager):
     def __init__(
         self,
         client: Client,
-        connection: "Connection",
-        exchange: str,
-        lock: BaseLock,
         subscriber: Type[Subscriber],
+        lock: BaseLock,
         max_subscribers: int = 100,
         maxlen: int = 100,
-        max_backoff: float = 3,
-        max_failed: int = 5,
-        initial_backoff: float = 0.5,
         timeout: float = 5
     ) -> None:
         super().__init__(client, subscriber, max_subscribers, maxlen)
         self._lock = lock
         self._timeout = timeout
 
-        self._runner: asyncio.Task = self._loop.create_task(
-            self._run(
-                connection,
-                exchange,
-                max_backoff,
-                initial_backoff,
-                max_failed
-            )
-        )
-        self._background: Set[asyncio.Task] = set()
         self._ready: asyncio.Event = asyncio.Event()
-
-    @property
-    def closed(self) -> bool:
-        return self._runner is None or self._runner.done()
-
-    async def close(self) -> None:
-        fut = self._runner
-        self._runner = None
-        fut.cancel()
-        for fut in self._background: fut.cancel()
-        await super().close()
 
     async def subscribe(
         self,
@@ -237,20 +212,18 @@ class RabbitMQManager(BaseManager):
         
         subscriptions = set(subscriptions)
 
-        waiter = self._loop.create_task(self._ready.wait())
-        try:
-            await asyncio.wait_for(waiter, timeout=self._timeout)
-        except asyncio.TimeoutError as e:
-            raise SubscriptionTimeout("Timed out waiting for service to be ready.") from e
+        await self.wait()
         
         try:
             to_subscribe = await self._lock.acquire(subscriptions)
         except LockingError as e:
             raise SubscriptionLockError("Unable to acquire locks") from e
+        
+        await self._lock.register(subscriptions)
 
         if to_subscribe:
             try:
-                subscribed = await self._client.subscribe(subscriptions)
+                subscribed = await self._client.subscribe(to_subscribe)
             except ClientClosed as e:
                 await self._lock.release(to_subscribe)
                 await self.close()
@@ -260,8 +233,6 @@ class RabbitMQManager(BaseManager):
                 await self._lock.release(to_subscribe)
                 raise ClientSubscriptionError("Client refused subscriptions.")
 
-        await self._lock.register(subscriptions)
-
         subscriber = self._subscriber()
         fut = subscriber.start(subscriptions, self._maxlen)
         fut.add_done_callback(self.subscriber_lost)
@@ -269,6 +240,16 @@ class RabbitMQManager(BaseManager):
 
         _LOGGER.debug("Added subscriber %i of %i", len(self._subscribers), self._max_subscribers)
         return subscriber
+
+    async def wait(self) -> None:
+        """Wait for backend to be ready."""
+        if self._ready.is_set():
+            return
+        waiter = self._loop.create_task(self._ready.wait())
+        try:
+            await asyncio.wait_for(waiter, timeout=self._timeout)
+        except asyncio.TimeoutError as e:
+            raise SubscriptionTimeout("Timed out waiting for service to be ready.") from e
 
     async def _dropped(self) -> None:
         """Retrieve dropped subscriptions and release client locks."""
@@ -284,29 +265,6 @@ class RabbitMQManager(BaseManager):
                 else:
                     _LOGGER.debug("Releasing %i locks", len(subscriptions))
                 await self._lock.release(subscriptions)
-    
-    async def _publish_messages(self, connection: Connection, exchange: str) -> None:
-        """Retrieve messages from the client and publish them to the exchange."""
-        channel = await connection.channel(publisher_confirms=False)
-        await channel.exchange_declare(exchange=exchange, exchange_type="fanout")
-        while True:
-            async for msg in self._client.messages():
-                await channel.basic_publish(msg.encode(), exchange=exchange)
-
-    async def _receive_messages(self, connection: Connection, exchange: str) -> None:
-        """Retrieve messages from the exchange and publish them to subscribers."""
-        channel = await connection.channel(publisher_confirms=False)
-        await channel.exchange_declare(exchange=exchange, exchange_type="fanout")
-        declare_ok = await channel.queue_declare(exclusive=True)
-        await channel.queue_bind(declare_ok.queue, exchange)
-        
-        async def on_message(message: DeliveredMessage) -> None:
-            for fut, subscriber in self._subscribers.items():
-                if not fut.done():
-                    subscriber.publish(message.body)
-            await message.channel.basic_ack(message.delivery.delivery_tag)
-        
-        await channel.basic_consume(declare_ok.queue, on_message)
 
     async def _extend_client(self) -> None:
         """Extend client locks owned by this process."""
@@ -327,6 +285,7 @@ class RabbitMQManager(BaseManager):
                 await self._lock.extend_subscriber(subscriptions)
 
     async def _client_poll(self) -> None:
+        """Poll client subscriptions owned by this process."""
         while True:
             sleep = (self._lock.ttl + random.randint(0, self._lock.ttl*1000//2))/1000
             await asyncio.sleep(sleep)
@@ -341,6 +300,7 @@ class RabbitMQManager(BaseManager):
                     _LOGGER.debug("Unsubscribing from %i subscriptions", len(unsubscribe))
     
     async def _subscriber_poll(self) -> None:
+        """Poll subscriber subscriptions owned by this process."""
         while True:
             sleep = (self._lock.ttl + random.randint(0, self._lock.ttl*1000//2))/1000
             await asyncio.sleep(sleep)
@@ -366,65 +326,252 @@ class RabbitMQManager(BaseManager):
                                     exc_info=e
                                 )
 
+
+class RabbitMQManager(_DistributedManager):
+    """A manager for distributed environments backed by RabbitMQ."""
+    def __init__(
+        self,
+        client: Client,
+        subscriber: Type[Subscriber],
+        lock: BaseLock,
+        factory: Callable[[],"Connection"],
+        channel_name: str,
+        max_subscribers: int = 100,
+        maxlen: int = 100,
+        timeout: float = 5,
+        max_backoff: float = 3,
+        initial_backoff: float = 0.5,
+        max_failed: int = 5
+    ) -> None:
+        super().__init__(client, subscriber, lock, max_subscribers, maxlen, timeout)
+        self._runner: asyncio.Task = Context().run(
+            self._loop.create_task,
+            self._run(
+                factory,
+                channel_name,
+                max_backoff,
+                initial_backoff,
+                max_failed
+            )
+        )
+
+    @property
+    def closed(self) -> bool:
+        return self._runner is None or self._runner.done()
+
+    async def close(self) -> None:
+        fut = self._runner
+        self._runner = None
+        fut.cancel()
+        for fut in self._background: fut.cancel()
+        await super().close()
+    
+    async def _publish_messages(self, connection: "Connection", exchange: str) -> None:
+        """Retrieve messages from the client and publish them to the exchange."""
+        channel = await connection.channel(publisher_confirms=False)
+        await channel.exchange_declare(exchange=exchange, exchange_type="fanout")
+        async for msg in self._client.messages():
+            await channel.basic_publish(msg.encode(), exchange=exchange)
+
+    async def _receive_messages(self, connection: "Connection", exchange: str) -> None:
+        """Retrieve messages from the exchange and publish them to subscribers."""
+        channel = await connection.channel(publisher_confirms=False)
+        await channel.exchange_declare(exchange=exchange, exchange_type="fanout")
+        declare_ok = await channel.queue_declare(exclusive=True)
+        await channel.queue_bind(declare_ok.queue, exchange)
+        
+        async def on_message(message: DeliveredMessage) -> None:
+            data = message.body
+            for fut, subscriber in self._subscribers.items():
+                if not fut.done():
+                    subscriber.publish(data)
+            await message.channel.basic_ack(message.delivery.delivery_tag)
+        
+        await channel.basic_consume(declare_ok.queue, on_message)
+
     async def _run(
         self,
-        connection: "Connection",
+        factory: Callable[[],"Connection"],
         exchange: str,
         max_backoff: float,
         initial_backoff: float,
         max_failed: int
     ) -> None:
+        """Manages background tasks on manager."""
         attempts = 0
         backoff = EqualJitterBackoff(max_backoff, initial_backoff)
-        while True:
-            assert connection.is_closed
-            _LOGGER.debug("Connecting to %s", connection.url)
-            try:
-                await connection.connect()
-            except AMQPError:
-                sleep = backoff.compute(attempts)
-                _LOGGER.warning("Connection failed, trying again in %0.2f", sleep, exc_info=True)
-                await asyncio.sleep(sleep)
-                attempts += 1
-                if attempts >= max_failed:
-                    subscriptions = self.subscriptions
-                    if subscriptions:
-                        _LOGGER.warning(
-                            "Dropping %i subscribers due to repeated connection failures",
-                            len(self._subscribers)
-                        )
-                        for fut in self._subscribers.keys(): fut.cancel()
-                continue
-            else:
-                attempts = 0
-                self._ready.set()
-                _LOGGER.debug("Connection established")
-            
-            try:
-                async with anyio.create_task_group() as tg:
-                    tg.start_soon(RabbitMQManager._dropped, self)
-                    tg.start_soon(RabbitMQManager._client_poll, self)
-                    tg.start_soon(RabbitMQManager._subscriber_poll, self)
-                    tg.start_soon(RabbitMQManager._extend_client, self)
-                    tg.start_soon(RabbitMQManager._extend_subscriber, self)
-                    tg.start_soon(RabbitMQManager._publish_messages, self, connection, exchange)
-                    tg.start_soon(RabbitMQManager._receive_messages, self, connection, exchange)
-            except Exception:
-                self._ready.clear()
-                sleep = backoff.compute(0)
-                if not connection.is_closed:
-                    await connection.close()
-                _LOGGER.warning(
-                    "Manager unavailable, attempting to reconnect in %0.2f seconds",
-                    sleep,
-                    exc_info=True
-                )
-                await asyncio.sleep(sleep)
+        try:
+            while True:
+                connection = factory()
+                _LOGGER.debug("Connecting to %s", connection.url)
+                try:
+                    await connection.connect()
+                except (AMQPError, PAMQPException):
+                    sleep = backoff.compute(attempts)
+                    _LOGGER.warning("Connection failed, trying again in %0.2f", sleep, exc_info=True)
+                    await asyncio.sleep(sleep)
+                    attempts += 1
+                    if attempts >= max_failed:
+                        subscriptions = self.subscriptions
+                        if subscriptions:
+                            _LOGGER.warning(
+                                "Dropping %i subscribers due to repeated connection failures",
+                                len(self._subscribers)
+                            )
+                            for fut in self._subscribers.keys(): fut.cancel()
+                    continue
+                else:
+                    attempts = 0
+                    self._ready.set()
+                    _LOGGER.debug("Connection established")
+                
+                try:
+                    async with anyio.create_task_group() as tg:
+                        tg.start_soon(RabbitMQManager._dropped, self)
+                        tg.start_soon(RabbitMQManager._client_poll, self)
+                        tg.start_soon(RabbitMQManager._subscriber_poll, self)
+                        tg.start_soon(RabbitMQManager._extend_client, self)
+                        tg.start_soon(RabbitMQManager._extend_subscriber, self)
+                        tg.start_soon(RabbitMQManager._publish_messages, self, connection, exchange)
+                        tg.start_soon(RabbitMQManager._receive_messages, self, connection, exchange)
+                except (Exception, anyio.ExceptionGroup):
+                    self._ready.clear()
+                    sleep = backoff.compute(0)
+                    if not connection.is_closed:
+                        print("Closing connection")
+                        await connection.close()
+                    _LOGGER.warning(
+                        "Manager unavailable, attempting to reconnect in %0.2f seconds",
+                        sleep,
+                        exc_info=True
+                    )
+                    await asyncio.sleep(sleep)
+        except Exception:
+            _LOGGER.error("Manager failed due to unhandled exception", exc_info=True)
+            self._loop.create_task(self.close())
 
-
-class RedisManager:
+class RedisManager(_DistributedManager):
     """A manager for distributed environments backed by Redis."""
+    def __init__(
+        self,
+        client: Client,
+        subscriber: Type[Subscriber],
+        lock: BaseLock,
+        redis: "Redis",
+        channel_name: str,
+        max_subscribers: int = 100,
+        maxlen: int = 100,
+        timeout: float = 5,
+        max_backoff: float = 3,
+        initial_backoff: float = 0.5,
+        max_failed: int = 5
+    ) -> None:
+        super().__init__(client, subscriber, lock, max_subscribers, maxlen, timeout)
 
+        self._runner: asyncio.Task = Context().run(
+            self._loop.create_task,
+            self._run(
+                redis,
+                channel_name,
+                max_backoff,
+                initial_backoff,
+                max_failed
+            )
+        )
+
+    @property
+    def closed(self) -> bool:
+        return self._runner is None or self._runner.done()
+
+    async def close(self) -> None:
+        fut = self._runner
+        self._runner = None
+        fut.cancel()
+        for fut in self._background: fut.cancel()
+        await super().close()
+    
+    async def _publish_messages(self, redis: "Redis", channel: str) -> None:
+        """Retrieve messages from the client and publish them to the channel."""
+        async for msg in self._client.messages():
+            await redis.publish(channel, msg.encode())
+
+    async def _receive_messages(self, pubsub: "PubSub") -> None:
+        """Retrieve messages from the channel and publish them to subscribers."""
+        while True:
+            msg = await pubsub.get_message(
+                ignore_subscribe_messages=True,
+                timeout=10_000_000_000
+            )
+            if msg is not None:
+                data = msg["data"]
+                for fut, subscriber in self._subscribers.items():
+                    if not fut.done():
+                        subscriber.publish(data)
+
+    async def _run(
+        self,
+        redis: "Redis",
+        channel: str,
+        max_backoff: float,
+        initial_backoff: float,
+        max_failed: int
+    ) -> None:
+        """Manages background tasks on manager."""
+        attempts = 0
+        backoff = EqualJitterBackoff(max_backoff, initial_backoff)
+        pieces = redis.connection_pool.connection_class(
+            **redis.connection_pool.connection_kwargs
+        ).repr_pieces()
+        url_args = ",".join((f"{k}={v}" for k, v in pieces))
+        try:
+            while True:
+                _LOGGER.debug("Pinging redis %s", url_args)
+                try:
+                    await redis.ping()
+                except RedisError:
+                    sleep = backoff.compute(attempts)
+                    _LOGGER.warning("Connection failed, trying again in %0.2f", sleep, exc_info=True)
+                    await asyncio.sleep(sleep)
+                    attempts += 1
+                    if attempts >= max_failed:
+                        subscriptions = self.subscriptions
+                        if subscriptions:
+                            _LOGGER.warning(
+                                "Dropping %i subscribers due to repeated connection failures",
+                                len(self._subscribers)
+                            )
+                            for fut in self._subscribers.keys(): fut.cancel()
+                    continue
+                else:
+                    attempts = 0
+                    self._ready.set()
+                    pubsub = redis.pubsub()
+                    _LOGGER.debug("Connection established")
+                
+                try:
+                    async with anyio.create_task_group() as tg:
+                        tg.start_soon(RedisManager._dropped, self)
+                        tg.start_soon(RedisManager._client_poll, self)
+                        tg.start_soon(RedisManager._subscriber_poll, self)
+                        tg.start_soon(RedisManager._extend_client, self)
+                        tg.start_soon(RedisManager._extend_subscriber, self)
+                        tg.start_soon(RedisManager._publish_messages, self, redis, channel)
+                        tg.start_soon(RedisManager._receive_messages, self, pubsub)
+                except (Exception, anyio.ExceptionGroup):
+                    self._ready.clear()
+                    sleep = backoff.compute(0)
+                    await redis.close()
+                    _LOGGER.warning(
+                        "Manager unavailable, attempting to reconnect in %0.2f seconds",
+                        sleep,
+                        exc_info=True
+                    )
+                    await asyncio.sleep(sleep)
+        except Exception:
+            _LOGGER.error("Manager failed due to unhandled exception", exc_info=True)
+            self._loop.create_task(self.close())
+        finally:
+            await redis.close()
 
 class Managers(ObjSelection):
     DEFAULT = "default", LocalManager

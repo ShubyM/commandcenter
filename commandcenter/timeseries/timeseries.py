@@ -17,8 +17,8 @@ from typing import (
 )
 
 from commandcenter.integrations.models import BaseSubscription
-from commandcenter.timeseries.core.chunks import Chunk, TimeChunk
-from commandcenter.timeseries.core.exceptions import ChunkLimitError
+from commandcenter.timeseries.chunks import Chunk, TimeChunk
+from commandcenter.timeseries.exceptions import ChunkLimitError
 
 
 

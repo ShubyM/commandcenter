@@ -5,7 +5,7 @@ from typing import List, Sequence, Optional
 from pydantic import ValidationError
 
 from commandcenter.caching import memo
-from commandcenter.exceptions import PIWebContentError
+from commandcenter.sources.pi_web.exceptions import PIWebContentError
 from commandcenter.sources.pi_web.api.client import PIWebAPI
 from commandcenter.sources.pi_web.api.util import handle_request
 from commandcenter.sources.pi_web.models import (

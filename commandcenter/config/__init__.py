@@ -28,8 +28,3 @@ CC_TIMEZONE = config(
     "CC_TIMEZONE",
     default=TIMEZONE
 )
-CC_CACHE_DIR = config(
-    "CC_CACHE_DIR",
-    cast=pathlib.Path,
-    default=CC_HOME.joinpath("./.cache")
-)

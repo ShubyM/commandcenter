@@ -6,7 +6,7 @@ import subprocess
 import timeit
 from typing import List, Tuple
 
-from commandcenter.exceptions import NoHostsFound
+from commandcenter.auth.backends.activedirectory.exceptions import NoHostsFound
 
 
 

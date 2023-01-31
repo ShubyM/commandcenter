@@ -3,18 +3,20 @@ from typing import Any, Dict, Tuple, Type
 from commandcenter.caching import singleton
 from commandcenter.config import CC_TIMEZONE
 from commandcenter.exceptions import NotConfigured
+from commandcenter.integrations.managers import Managers
 from commandcenter.integrations.protocols import Client, Manager
 
 
 
 def resolve_traxx_client_dependencies(
-    _: Manager # TODO: Manager will be used when Redis and RabbitMQ integrations go in
+    manager: Manager
 ) -> Tuple[Type[Client], Tuple[Any], Dict[str, Any], Dict[str, Any]]:
     """Return all objects for the manager to initialize and support a Traxx client."""
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
     from commandcenter.config.sources.traxx import (
         CC_SOURCES_TRAXX_AUTH_FILEPATH,
+        CC_SOURCES_TRAXX_CHANNEL_NAME,
         CC_SOURCES_TRAXX_HTTP_BASE_URL,
         CC_SOURCES_TRAXX_HTTP_KEEPALIVE_TIMEOUT,
         CC_SOURCES_TRAXX_HTTP_MAX_CONNECTIONS,
@@ -56,8 +58,11 @@ def resolve_traxx_client_dependencies(
         "initial_backoff": CC_SOURCES_TRAXX_STREAM_INITIAL_BACKOFF,
         "timezone": CC_TIMEZONE
     }
+    add_kwargs = {}
+    if manager in (Managers.REDIS.cls, Managers.RABBITMQ.cls):
+        add_kwargs["channel_name"] = CC_SOURCES_TRAXX_CHANNEL_NAME
 
-    return TraxxClient, args, kwargs, {}
+    return TraxxClient, args, kwargs, add_kwargs
 
 
 @singleton

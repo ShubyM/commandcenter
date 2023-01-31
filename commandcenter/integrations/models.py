@@ -109,7 +109,9 @@ class BaseSubscriptionRequest(Tokenable):
         """A unique iddentification for this sequence of subscriptions. Tokens are
         stable across runtimes.
         """
-        o = ''.join([str(hash(subscription)) for subscription in self.subscriptions]).encode()
+        o = f'{self.__class__.__name__}'.join(
+            [str(hash(subscription)) for subscription in self.subscriptions]
+        ).encode()
         token = int(hashlib.shake_128(o).hexdigest(16), 16)
         return ReferenceToken(token=str(token))
 

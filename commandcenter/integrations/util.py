@@ -3,7 +3,7 @@ from collections.abc import AsyncIterable
 
 import anyio
 
-from commandcenter.exceptions import DroppedSubscriber
+from commandcenter.integrations.exceptions import DroppedSubscriber
 from commandcenter.integrations.protocols import Subscriber
 
 
@@ -27,7 +27,7 @@ async def iter_subscribers(*subscribers: Subscriber) -> AsyncIterable[str]:
         
         async with anyio.create_task_group() as tg:
             for subscriber in subscribers:
-                tg.start_soon(wrap_iter_subscriber(subscriber))
+                tg.start_soon(wrap_iter_subscriber, subscriber)
         
     loop = asyncio.get_running_loop()
     queue = asyncio.Queue(maxsize=1000)
@@ -45,6 +45,7 @@ async def iter_subscribers(*subscribers: Subscriber) -> AsyncIterable[str]:
                     raise DroppedSubscriber()
             yield getter.result()
     finally:
+        for subscriber in subscribers: subscriber.stop(None)
         getter.cancel()
         wrapper.cancel()
         
