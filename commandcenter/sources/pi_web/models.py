@@ -12,7 +12,7 @@ from commandcenter.caching.tokens import ReferenceToken, Tokenable
 from commandcenter.integrations.models import (
     BaseSubscription,
     BaseSubscriptionRequest,
-    HashableModel
+    Subscription
 )
 from commandcenter.sources import Sources
 from commandcenter.util import (
@@ -67,7 +67,7 @@ class PISubscriptionRequest(BaseSubscriptionRequest):
     subscriptions: List[PISubscription]
 
 
-class PIObjSearch(HashableModel):
+class PIObjSearch(Subscription):
     """Model for client to search for a WebId based on a search key."""
     search: str
     web_id_type: WebIdType = WebIdType.FULL
@@ -110,7 +110,7 @@ class PIObjSearch(HashableModel):
             return False
 
 
-class PIObjSearchFailed(HashableModel):
+class PIObjSearchFailed(Subscription):
     """Model to detail why an object search failed."""
     obj: PIObjSearch
     reason: str

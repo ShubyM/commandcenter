@@ -1,5 +1,4 @@
 import hashlib
-from collections import OrderedDict
 from enum import IntEnum
 from typing import Any, Dict, List, Sequence, Set
 
@@ -12,16 +11,20 @@ from commandcenter.util import json_loads
 
 
 
-class HashableModel(BaseModel):
+class Subscription(BaseModel):
     """A hashable base model.
     
-    Models must json encode/decode(able). Hashes for use the JSON string
+    Models must be json encode/decode(able). Hashes for use the JSON string
     representation of the object and are consistent across runtimes.
 
-    Hashing: The `dict()` representation of the model is sorted alphanumerically
-    by field name and then converted to JSON. The hashing algorithm used is
-    SHAKE 128 with a 16 byte length. Finally, the hex digest is converted
-    to a base 10 integer.
+    Hashing: The `dict()` representation of the model is converted to a JSON
+    byte string which is then sorted. The hashing algorithm used is SHAKE 128
+    with a 16 byte length. Finally, the hex digest is converted to a base 10
+    integer.
+
+    Note: Implementations must not override the comparison operators.
+    These operators are based on the hash of the model which is critical when
+    sorting sequences of mixed implementation types.
     """
     class Config:
         frozen=True
@@ -29,26 +32,14 @@ class HashableModel(BaseModel):
         json_loads=json_loads
 
     def __hash__(self) -> int:
-        model = self.dict()
-        sorted_ = OrderedDict(sorted(model.items()))
         try:
-            o = orjson.dumps(sorted_)
+            o = bytes(sorted(orjson.dumps(self.dict())))
         except Exception as e:
             raise TypeError(f"unhashable type: {e.__str__()}")
         return int(hashlib.shake_128(o).hexdigest(16), 16)
 
-
-class BaseSubscription(HashableModel):
-    """Base model for all subscriptions.
-
-    Note: Subscription implementations must not override the comparison operators.
-    These operators are based on the hash of the model which is critical when
-    sorting sequences of mixed subscription types.
-    """
-    source: Sources
-    
     def __eq__(self, __o: object) -> bool:
-        if not isinstance(__o, BaseSubscription):
+        if not isinstance(__o, Subscription):
             return False
         try:
             return hash(self) == hash(__o)
@@ -56,7 +47,7 @@ class BaseSubscription(HashableModel):
             return False
     
     def __gt__(self, __o: object) -> bool:
-        if not isinstance(__o, BaseSubscription):
+        if not isinstance(__o, Subscription):
             raise TypeError(f"'>' not supported between instances of {type(self)} and {type(__o)}.")
         try:
             return hash(self) > hash(__o)
@@ -64,12 +55,17 @@ class BaseSubscription(HashableModel):
             return False
     
     def __lt__(self, __o: object) -> bool:
-        if not isinstance(__o, BaseSubscription):
+        if not isinstance(__o, Subscription):
             raise TypeError(f"'<' not supported between instances of {type(self)} and {type(__o)}.")
         try:
             return hash(self) < hash(__o)
         except TypeError:
             return False
+
+
+class BaseSubscription(Subscription):
+    """Base model for all subscriptions."""
+    source: Sources
 
 
 class AnySubscription(BaseSubscription):
@@ -80,7 +76,7 @@ class AnySubscription(BaseSubscription):
 
 class DroppedSubscriptions(BaseModel):
     """Message for dropped subscriptions from a client to a manager."""
-    subscriptions: Set[BaseSubscription | None]
+    subscriptions: Set[Subscription | None]
     error: Exception | None
 
     class Config:

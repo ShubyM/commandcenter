@@ -367,7 +367,7 @@ class MemcachedCache(MemoCache):
     def _ping(self) -> None:
         try:
             pong = self.memcached.stats()
-        except MemcacheError:
+        except Exception:
             _LOGGER.warning("Disabling memcached cache", exc_info=True)
             self._enabled = False
         else:

@@ -9,9 +9,9 @@ from typing import Any, Deque, Dict, Set, Type
 
 from commandcenter.integrations.exceptions import ClientClosed
 from commandcenter.integrations.models import (
-    BaseSubscription,
     DroppedSubscriptions,
-    SubscriberCodes
+    SubscriberCodes,
+    Subscription
 )
 from commandcenter.integrations.protocols import (
     Client,
@@ -47,7 +47,7 @@ class BaseClient(Client):
         raise NotImplementedError()
 
     @property
-    def subscriptions(self) -> Set[BaseSubscription]:
+    def subscriptions(self) -> Set[Subscription]:
         subscriptions = set()
         for fut, connection in self._connections.items():
             if not fut.done():
@@ -75,10 +75,10 @@ class BaseClient(Client):
         else:
             raise ClientClosed()
 
-    async def subscribe(self, subscriptions: Set[BaseSubscription]) -> bool:
+    async def subscribe(self, subscriptions: Set[Subscription]) -> bool:
         raise NotImplementedError()
 
-    async def unsubscribe(self, subscriptions: Set[BaseSubscription]) -> bool:
+    async def unsubscribe(self, subscriptions: Set[Subscription]) -> bool:
         raise NotImplementedError()
 
     def connection_lost(self, fut: asyncio.Future) -> None:
@@ -108,7 +108,7 @@ class BaseClient(Client):
 class BaseConnection(Connection):
     """Base implementation for a connection."""
     def __init__(self) -> None:
-        self._subscriptions: Set[BaseSubscription] = set()
+        self._subscriptions: Set[Subscription] = set()
         self._data: asyncio.Queue = None
         self._online: bool = False
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
@@ -118,7 +118,7 @@ class BaseConnection(Connection):
         return self._online
 
     @property
-    def subscriptions(self) -> Set[BaseSubscription]:
+    def subscriptions(self) -> Set[Subscription]:
         return self._subscriptions
 
     def toggle(self) -> None:
@@ -129,7 +129,7 @@ class BaseConnection(Connection):
 
     async def start(
         self,
-        subscriptions: Set[BaseSubscription],
+        subscriptions: Set[Subscription],
         data: asyncio.Queue,
         *args: Any,
         **kwargs: Any
@@ -173,7 +173,7 @@ class BaseManager(Manager):
         raise NotImplementedError()
 
     @property
-    def subscriptions(self) -> Set[BaseSubscription]:
+    def subscriptions(self) -> Set[Subscription]:
         subscriptions = set()
         for fut, subscriber in self._subscribers.items():
             if not fut.done():
@@ -185,7 +185,7 @@ class BaseManager(Manager):
             fut.cancel()
         await self._client.close()
 
-    async def subscribe(self, subscriptions: Sequence[BaseSubscription]) -> "Subscriber":
+    async def subscribe(self, subscriptions: Sequence[Subscription]) -> "Subscriber":
         raise NotImplementedError()
 
     def subscriber_lost(self, fut: asyncio.Future) -> None:
@@ -225,7 +225,7 @@ class BaseSubscriber(Subscriber):
         return self._stop_waiter is None or self._stop_waiter.done()
 
     @property
-    def subscriptions(self) -> Set[BaseSubscription]:
+    def subscriptions(self) -> Set[Subscription]:
         return self._subscriptions
 
     def stop(self, e: Exception | None) -> None:
@@ -249,7 +249,7 @@ class BaseSubscriber(Subscriber):
         
         _LOGGER.debug("Message published to %s", self.__class__.__name__)
     
-    def start(self, subscriptions: Set[BaseSubscription], maxlen: int) -> asyncio.Future:
+    def start(self, subscriptions: Set[Subscription], maxlen: int) -> asyncio.Future:
         assert self._stop_waiter is None
         assert self._data is None
         
@@ -299,6 +299,6 @@ class BaseSubscriber(Subscriber):
 class BaseLock(Lock):
     """Base implementation for a lock."""
 
-    def subscriber_key(self, subscription: BaseSubscription) -> str:
+    def subscriber_key(self, subscription: Subscription) -> str:
         o = str(hash(subscription)).encode()
         return str(int(hashlib.shake_128(o).hexdigest(16), 16))

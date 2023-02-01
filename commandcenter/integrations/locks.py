@@ -17,7 +17,7 @@ except ImportError:
 
 from commandcenter.caching import memo
 from commandcenter.integrations.base import BaseLock
-from commandcenter.integrations.models import BaseSubscription
+from commandcenter.integrations.models import Subscription
 from commandcenter.util import ObjSelection
 
 
@@ -42,9 +42,9 @@ async def register_lua_script(script: str, _redis: Redis) -> str:
 
 async def redis_poll(
     redis: Redis,
-    subscriptions: List[BaseSubscription],
+    subscriptions: List[Subscription],
     hashes: List[str]
-) -> List[BaseSubscription]:
+) -> List[Subscription]:
     """Runs a GET command on a sequence of keys. Returns the subscriptions which
     dont exist.
     """
@@ -64,9 +64,9 @@ async def redis_poll(
 
 def memcached_poll(
     memcached: Memcached,
-    subscriptions: List[BaseSubscription],
+    subscriptions: List[Subscription],
     hashes: List[str]
-) -> List[BaseSubscription]:
+) -> List[Subscription]:
     """Runs a GET command on a sequence of keys. Returns the subscriptions which
     exist.
     """
@@ -112,7 +112,7 @@ class RedisLock(BaseLock):
     def ttl(self) -> float:
         return self._ttl/1000
 
-    async def acquire(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+    async def acquire(self, subscriptions: Set[Subscription]) -> Set[Subscription]:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
         try:
@@ -128,7 +128,7 @@ class RedisLock(BaseLock):
         else:
             return set([subscription for subscription, result in zip(subscriptions, results) if result])
 
-    async def register(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def register(self, subscriptions: Set[Subscription]) -> None:
         subscriptions = sorted(subscriptions)
         hashes = [self.subscriber_key(subscription) for subscription in subscriptions]
         try:
@@ -141,7 +141,7 @@ class RedisLock(BaseLock):
         except RedisError:
             _LOGGER.warning("Error in redis client", exc_info=True)
 
-    async def release(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def release(self, subscriptions: Set[Subscription]) -> None:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
         script = LUA_SCRIPTS["release"]
@@ -156,7 +156,7 @@ class RedisLock(BaseLock):
         except RedisError:
             _LOGGER.warning("Error in redis client", exc_info=True)
 
-    async def extend_client(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def extend_client(self, subscriptions: Set[Subscription]) -> None:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
         try:
@@ -169,15 +169,15 @@ class RedisLock(BaseLock):
         except RedisError:
             _LOGGER.warning("Error in redis client", exc_info=True)
 
-    async def extend_subscriber(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def extend_subscriber(self, subscriptions: Set[Subscription]) -> None:
         await self.register(subscriptions)
 
-    async def client_poll(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+    async def client_poll(self, subscriptions: Set[Subscription]) -> Set[Subscription]:
         subscriptions = sorted(subscriptions)
         hashes = [self.subscriber_key(subscription) for subscription in subscriptions]
         return await redis_poll(self._redis, subscriptions, hashes)
 
-    async def subscriber_poll(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+    async def subscriber_poll(self, subscriptions: Set[Subscription]) -> Set[Subscription]:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
         return await redis_poll(self._redis, subscriptions, hashes)
@@ -201,7 +201,7 @@ class MemcachedLock(BaseLock):
     def ttl(self) -> float:
         return self._ttl
 
-    async def acquire(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+    async def acquire(self, subscriptions: Set[Subscription]) -> Set[Subscription]:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
         try:
@@ -228,7 +228,7 @@ class MemcachedLock(BaseLock):
         else:
             return set([subscription for subscription, stored in zip(subscriptions, results) if stored])
 
-    async def register(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def register(self, subscriptions: Set[Subscription]) -> None:
         subscriptions = sorted(subscriptions)
         hashes = [self.subscriber_key(subscription) for subscription in subscriptions]
         try:
@@ -244,7 +244,7 @@ class MemcachedLock(BaseLock):
         except Exception:
             _LOGGER.warning("Error in memcached client", exc_info=True)
 
-    async def release(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def release(self, subscriptions: Set[Subscription]) -> None:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
         id_ = self._id.encode()
@@ -256,7 +256,7 @@ class MemcachedLock(BaseLock):
             limiter=self._limiter
         )
 
-    async def extend_client(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def extend_client(self, subscriptions: Set[Subscription]) -> None:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
         try:
@@ -272,10 +272,10 @@ class MemcachedLock(BaseLock):
         except Exception:
             _LOGGER.warning("Error in memcached client", exc_info=True)
 
-    async def extend_subscriber(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def extend_subscriber(self, subscriptions: Set[Subscription]) -> None:
         await self.register(subscriptions)
     
-    async def client_poll(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+    async def client_poll(self, subscriptions: Set[Subscription]) -> Set[Subscription]:
         subscriptions = sorted(subscriptions)
         hashes = [self.subscriber_key(subscription) for subscription in subscriptions]
         return await anyio.to_thread.run_sync(
@@ -286,7 +286,7 @@ class MemcachedLock(BaseLock):
             limiter=self._limiter
         )
 
-    async def subscriber_poll(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+    async def subscriber_poll(self, subscriptions: Set[Subscription]) -> Set[Subscription]:
         subscriptions = sorted(subscriptions)
         hashes = [str(hash(subscription)) for subscription in subscriptions]
         return await anyio.to_thread.run_sync(

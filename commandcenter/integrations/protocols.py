@@ -4,9 +4,9 @@ from types import TracebackType
 from typing import Any, Deque, Protocol, Set, Type
 
 from commandcenter.integrations.models import (
-    BaseSubscription,
     DroppedSubscriptions,
-    SubscriberCodes
+    SubscriberCodes,
+    Subscription
 )
 
 
@@ -27,7 +27,7 @@ class Client(Protocol):
         ...
     
     @property
-    def subscriptions(self) -> Set[BaseSubscription]:
+    def subscriptions(self) -> Set[Subscription]:
         """Returns a set of the subscriptions from all connections."""
         ...
 
@@ -48,7 +48,7 @@ class Client(Protocol):
         """Receive incoming messages from all connections."""
         yield
 
-    async def subscribe(self, subscriptions: Set[BaseSubscription]) -> bool:
+    async def subscribe(self, subscriptions: Set[Subscription]) -> bool:
         """Subscribe to a set of subscriptions.
 
         Args:
@@ -60,7 +60,7 @@ class Client(Protocol):
         """
         ...
 
-    async def unsubscribe(self, subscriptions: Set[BaseSubscription]) -> bool:
+    async def unsubscribe(self, subscriptions: Set[Subscription]) -> bool:
         """Unsubscribe from from a set of subscriptions.
         
         Args:
@@ -86,7 +86,7 @@ class Connection(Protocol):
         ...
 
     @property
-    def subscriptions(self) -> Set[BaseSubscription]:
+    def subscriptions(self) -> Set[Subscription]:
         """Return a set of the subscriptions for this connections."""
         ...
 
@@ -106,7 +106,7 @@ class Connection(Protocol):
 
     async def start(
         self,
-        subscriptions: Set[BaseSubscription],
+        subscriptions: Set[Subscription],
         data_queue: asyncio.Queue,
         *args: Any,
         **kwargs: Any
@@ -134,7 +134,7 @@ class Manager(Protocol):
         ...
 
     @property
-    def subscriptions(self) -> Set[BaseSubscription]:
+    def subscriptions(self) -> Set[Subscription]:
         """Return a set of the subscriptions from all subscribers."""
         ...
 
@@ -144,7 +144,7 @@ class Manager(Protocol):
 
     async def subscribe(
         self,
-        subscriptions: Sequence[BaseSubscription]
+        subscriptions: Sequence[Subscription]
     ) -> "Subscriber":
         """Subscribe on the client and configure a subscriber.
         
@@ -173,7 +173,7 @@ class Subscriber(Protocol):
         ...
 
     @property
-    def subscriptions(self) -> Set[BaseSubscription]:
+    def subscriptions(self) -> Set[Subscription]:
         """Returns a set of the subscriptions for this subscriber."""
         ...
 
@@ -184,7 +184,7 @@ class Subscriber(Protocol):
         """
         ...
     
-    def start(self, subscriptions: Set[BaseSubscription], maxlen: int) -> asyncio.Future:
+    def start(self, subscriptions: Set[Subscription], maxlen: int) -> asyncio.Future:
         """Start the subscriber.
         
         This method is called by the manager.
@@ -220,7 +220,7 @@ class Lock:
         """The TTL used for locks in seconds."""
         ...
 
-    async def acquire(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+    async def acquire(self, subscriptions: Set[Subscription]) -> Set[Subscription]:
         """Acquire a lock for a subscription tied to a client.
         
         Args:
@@ -237,7 +237,7 @@ class Lock:
         """
         ...
 
-    async def register(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def register(self, subscriptions: Set[Subscription]) -> None:
         """Register subscriptions tied to a subscriber.
 
         Args:
@@ -248,7 +248,7 @@ class Lock:
         """
         ...
 
-    async def release(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def release(self, subscriptions: Set[Subscription]) -> None:
         """Release the locks for subscriptions owned by this process.
 
         Args:
@@ -262,7 +262,7 @@ class Lock:
         """
         ...
 
-    async def extend_client(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def extend_client(self, subscriptions: Set[Subscription]) -> None:
         """Extend the locks on client subscriptions owned by this process.
 
         Args:
@@ -273,7 +273,7 @@ class Lock:
         """
         ...
 
-    async def extend_subscriber(self, subscriptions: Set[BaseSubscription]) -> None:
+    async def extend_subscriber(self, subscriptions: Set[Subscription]) -> None:
         """Extend the registration on subscriber subscriptions owned by this process.
 
         Args:
@@ -284,7 +284,7 @@ class Lock:
         """
         ...
 
-    async def client_poll(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+    async def client_poll(self, subscriptions: Set[Subscription]) -> Set[Subscription]:
         """Poll subscriptions tied to the manager's client.
         
         This method returns subscriptions which can be unsubscribed from.
@@ -301,7 +301,7 @@ class Lock:
         """
         ...
 
-    async def subscriber_poll(self, subscriptions: Set[BaseSubscription]) -> Set[BaseSubscription]:
+    async def subscriber_poll(self, subscriptions: Set[Subscription]) -> Set[Subscription]:
         """Poll subscriptions tied to the managers subscribers.
         
         This method returns subscriptions which are not being streamed by a manager
@@ -322,7 +322,7 @@ class Lock:
         """
         ...
 
-    def subscriber_key(self, subscription: BaseSubscription) -> str:
+    def subscriber_key(self, subscription: Subscription) -> str:
         """Return the subscriber key from the subscription hash.
         
         Args:
