@@ -26,12 +26,14 @@ class Topic(Tokenable):
     
     @property
     def token(self) -> ReferenceToken:
-        return ReferenceToken(str(hash(self)))
+        return ReferenceToken(f"topic-{self.name}")
 
 
-class TopicSubscription(BaseModel):
+class TopicSubscription(Subscription):
+    """Subscription model for a topic or subset of a topic."""
     topic: str
     routing_key: str | None
+    
     @root_validator
     def _set_routing_key(cls, v: Dict[str, str | None]) -> Dict[str, str]:
         topic = v.get("topic")
@@ -46,7 +48,6 @@ class TopicSubscription(BaseModel):
 
 class Event(BaseModel):
     """An event to publish."""
-    topic: str
     routing_key: str
     payload: Dict[str, Any]
     

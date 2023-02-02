@@ -42,6 +42,10 @@ class Cache:
         """
         raise NotImplementedError()
 
+    def invalidate(self, value_key: str) -> None:
+        """Invalidate a cached value."""
+        raise NotImplementedError()
+
     def clear(self) -> None:
         """Clear all values from this function cache."""
         raise NotImplementedError()
@@ -298,3 +302,12 @@ def clear_cached_func(cached_func: CachedFunction) -> None:
     function_key = _make_function_key(cached_func.cache_type, cached_func.func)
     cache = cached_func.get_function_cache(function_key=function_key)
     cache.clear()
+
+
+def invalidate_cached_value(cached_func: CachedFunction) -> None:
+    def wraps(*args: Any, **kwargs: Any) -> None:
+        function_key = _make_function_key(cached_func.cache_type, cached_func.func)
+        cache = cached_func.get_function_cache(function_key=function_key)
+        value_key = _make_value_key(cached_func.cache_type, cached_func.func, *args, **kwargs)
+        cache.invalidate(value_key)
+    return wraps

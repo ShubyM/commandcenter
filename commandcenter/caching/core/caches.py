@@ -107,6 +107,11 @@ class MemoCache(Cache):
         """Clear all values from this function cache."""
         self._mem_cache.clear()
 
+    def invalidate(self, value_key: str) -> None:
+        """Invalidate a cached value."""
+        with self._mem_cache_lock:
+            self._mem_cache.pop(value_key, None)
+
     def _read_from_mem_cache(self, key: str) -> bytes:
         with self._mem_cache_lock:
             if key in self._mem_cache:
@@ -175,6 +180,12 @@ class DiskCache(MemoCache):
         self._write_to_mem_cache(key, pickled_entry)
         self._write_to_disk_cache(key, pickled_entry)
 
+    def invalidate(self, value_key: str) -> None:
+        """Invalidate a cached value."""
+        with self._mem_cache_lock:
+            self._mem_cache.pop(value_key, None)
+            self._remove_from_disk_cache(value_key)
+
     def _read_from_disk_cache(self, key: str) -> bytes:
         path = self._get_file_path(key)
         try:
@@ -198,6 +209,24 @@ class DiskCache(MemoCache):
                 # If we can't remove the file, it's not a big deal.
                 pass
             raise CacheError("Unable to write to cache") from e
+    
+    def _remove_from_disk_cache(self, key: str) -> None:
+        """Delete a cache file from disk. If the file does not exist on disk,
+        return silently.
+        
+        If another exception occurs, log it. Does not throw.
+        """
+        path = self._get_file_path(key)
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception as ex:
+            _LOGGER.exception(
+                "Unable to remove a file from the disk cache", exc_info=ex
+            )
+        else:
+            _LOGGER.debug("Removed file from disk cache %s", self.key)
 
     def _get_file_path(self, value_key: str) -> pathlib.Path:
         """Return the path of the disk cache file for the given value."""
@@ -257,6 +286,11 @@ class RedisCache(MemoCache):
         self._write_to_mem_cache(key, pickled_entry)
         if self._enabled:
             self._write_to_redis_cache(key, pickled_entry)
+    
+    def invalidate(self, value_key: str) -> None:
+        """Invalidate a cached value."""
+        super().invalidate(value_key)
+        self._remove_from_redis_cache(value_key)
 
     def _ping(self) -> None:
         try:
@@ -303,6 +337,20 @@ class RedisCache(MemoCache):
             raise CacheError("Unable to write to cache.") from e
         if not value:
             raise CacheError("Unable to write to cache.")
+
+    def _remove_from_redis_cache(self, key: str) -> None:
+        """Delete a cache key from Redis. If the cache key does not exist,
+        return silently.
+        
+        If another exception occurs, log it. Does not throw.
+        """
+        key = self._get_redis_key(key)
+        try:
+            self.redis.delete(key)
+        except RedisError:
+            _LOGGER.warning("Unable to delete from redis", exc_info=True)
+        except Exception:
+            _LOGGER.error("Unhandled exception in redis delete", exc_info=True)
 
     def _get_redis_key(self, value_key: str) -> str:
         return f"{self.key}-{value_key}"
@@ -362,6 +410,11 @@ class MemcachedCache(MemoCache):
         if self._enabled:
             self._write_to_memcached_cache(key, pickled_entry)
 
+    def invalidate(self, value_key: str) -> None:
+        """Invalidate a cached value."""
+        super().invalidate(value_key)
+        self._remove_from_memcached_cache(value_key)
+
     def _ping(self) -> None:
         try:
             pong = self.memcached.stats()
@@ -401,6 +454,16 @@ class MemcachedCache(MemoCache):
             raise CacheError("Unable to write to cache.") from e
         if not value:
             raise CacheError("Unable to write to cache.")
+
+    def _remove_from_memcached_cache(self, key: str) -> None:
+        """Delete a cache key from Memcached. If the cache key does not exist,
+        return silently.
+        """
+        key = self._get_memcached_key(key)
+        try:
+            self.memcached.delete(key)
+        except Exception:
+            _LOGGER.warning("Unable to delete from memcached", exc_info=True)
 
     def _get_memcached_key(self, value_key: str) -> str:
         return f"{self.key}-{value_key}"

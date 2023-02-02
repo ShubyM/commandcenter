@@ -25,6 +25,7 @@ from commandcenter.caching.core.cache import (
     Cache,
     CachedFunction,
     clear_cached_func,
+    invalidate_cached_value,
     wrap_async,
     wrap_sync
 )
@@ -145,8 +146,7 @@ class MemoCaches:
         """Clear all memo caches."""
         with self._caches_lock:
             for cache in self._function_caches.values():
-                if not isinstance(cache, caches.DISK.cls):
-                    cache.clear()
+                cache.clear()
 
             if os.path.isdir(memo._cache_dir):
                 shutil.rmtree(memo._cache_dir)
@@ -160,63 +160,6 @@ class MemoCaches:
 
 _memo_caches = MemoCaches()
 
-
-def make_cache_path(cache_dir: pathlib.Path) -> bool:
-    """Create the directory(s) required to reach the cache path."""
-    try:
-        os.makedirs(cache_dir, exist_ok=True)
-    except OSError:
-        return False
-    else:
-        return True
-
-
-def configure_cache(
-    backend: Callable[[], caches],
-    ttl: int | float | None,
-) -> Tuple[Type[Cache], Dict[str, Any], int | None]:
-    backend_kwargs = {}
-
-    backend = backend()
-    if backend is caches.REDIS:
-        if not memo._redis:
-            memo.set_redis_client(None)
-        assert is_type(memo._redis, "redis.client.Redis"), "Client not set to Redis instance."
-        backend_kwargs["redis"] = lambda: memo._redis
-    elif backend is caches.MEMCACHED:
-        if not memo._memcached:
-            memo.set_memcached_client(None)
-        assert is_type(memo._memcached, "pymemcache.client.base.PooledClient"), "Client not set to PooledClient instance."
-        backend_kwargs["memcached"] = lambda: memo._memcached
-    elif backend is caches.DISK:
-        if not make_cache_path(memo._cache_dir):
-            warnings.warn(
-                "Failed to create the cache directory. Memoized objects cannot be "
-                "persisted to disk. Objects will be stored in memory.",
-                stacklevel=2
-            )
-            backend = caches.MEMORY
-        else:
-            backend_kwargs["cache_dir"] = lambda: memo._cache_dir
-            
-    if backend is caches.REDIS or backend is caches.MEMCACHED and ttl is None:
-        warnings.warn(
-            "'ttl' cannot be 'None' when using the redis | memcached "
-            "backends. Setting to 86400 seconds",
-            stacklevel=2
-        )
-        ttl = 86400
-
-    return backend.cls, backend_kwargs, ttl
-
-
-def get_cache_control(backend: Callable[[], caches], ttl: int | None) -> int:
-    if backend is caches.REDIS or backend is caches.MEMCACHED and ttl is None:
-        return 86_400
-    elif ttl is None or ttl > 31536000 or backend is caches.DISK:
-        return 31_536_000
-    else:
-        return ttl
 
 class MemoAPI:
     """Implements the public memo API: the `@memo` decorator, and `memo.clear()`."""
@@ -333,12 +276,21 @@ class MemoAPI:
         
         A memoized function's cache can be procedurally cleared (only for "memory"
         backend)...
-        ... @memo
+        >>> @memo
         ... def fetch_and_clean_data(_db_connection, num_rows):
         ...     # Fetch data from _db_connection here, and then clean it up.
         ...     return data
         >>> # Clears all cached entries for this function.
         >>> fetch_and_clean_data.clear()
+
+        A cached value can be procedurally invalidated by calling the `invalidate`
+        method...
+        >>> @memo
+        ... def fetch_and_clean_data(_db_connection, num_rows):
+        ...     # Fetch data from _db_connection here, and then clean it up.
+        ...     return data
+        >>> # Invalidate a cached value
+        >>> fetch_and_clean_data.invalidate(another_connection, num_rows=10)
         
         You can clear also clear all cached entries
         >>> memo.clear()
@@ -350,7 +302,7 @@ class MemoAPI:
         if backend is not None:
             backend_callable = lambda: caches(backend)
         else:
-            backend_callable = lambda: memo._default_backend
+            backend_callable = lambda: self._default_backend
 
         if isinstance(ttl, timedelta):
             ttl_seconds = ttl.total_seconds()
@@ -370,7 +322,7 @@ class MemoAPI:
                 else:
                     partial = functools.partial(wrap_sync, cached_func)
                 partial.clear = functools.partial(clear_cached_func, cached_func)
-
+                partial.invalidate = invalidate_cached_value(cached_func)
                 # This is only useful for cache control headers in API responses
                 partial.ttl = lambda: get_cache_control(backend, ttl_seconds)
                 return partial
@@ -388,7 +340,7 @@ class MemoAPI:
             else:
                 partial = functools.partial(wrap_sync, cached_func)
             partial.clear = functools.partial(clear_cached_func, cached_func)
-
+            partial.invalidate = invalidate_cached_value(cached_func)
             # This is only useful for cache control headers in API responses
             partial.ttl = lambda: get_cache_control(backend, ttl_seconds)
             return partial
@@ -398,93 +350,157 @@ class MemoAPI:
         """Clear all in-memory and on-disk memo caches."""
         _memo_caches.clear_all()
 
-    @classmethod
-    def set_default_backend(cls, backend: str) -> None:
-        with cls._lock:
-            cls._default_backend = caches(backend)
 
-    @classmethod
-    def set_cache_dir(cls, cache_dir: os.PathLike) -> None:
-        """Set the caching directory for the memo cache API."""
-        if not cache_dir:
-            return
-        with cls._lock:
-            with _memo_caches._caches_lock:
-                for cache in _memo_caches._function_caches.values():
-                    if isinstance(cache, caches.DISK.cls):
-                        warnings.warn(
-                            "Setting the cache directory while disk caches "
-                            "already exist for memoized functions can lead to "
-                            "cache misses.",
-                            stacklevel=2
-                        )
-                cache_dir = pathlib.Path(cache_dir)
-                old_dir = cls._cache_dir
-                if old_dir == cache_dir:
-                    return
-                if not make_cache_path(cache_dir):
+def set_default_backend(backend: str) -> None:
+    """Set the default backend for the memo cache API."""
+    with memo._lock:
+        memo._default_backend = caches(backend)
+
+
+def set_cache_dir(cache_dir: os.PathLike) -> None:
+    """Set the caching directory for the memo cache API."""
+    if not cache_dir:
+        return
+    with memo._lock:
+        with _memo_caches._caches_lock:
+            for cache in _memo_caches._function_caches.values():
+                if isinstance(cache, caches.DISK.cls):
                     warnings.warn(
-                        "Failed to create the cache directory. The existing "
-                        "directory will be used instead.",
+                        "Setting the cache directory while disk caches "
+                        "already exist for memoized functions can lead to "
+                        "cache misses.",
                         stacklevel=2
                     )
-                    return
-                try:
-                    if os.path.isdir(old_dir):
-                        shutil.rmtree(old_dir)
-                except OSError: # We cant clean up the directory, oh well
-                    pass
-                cls._cache_dir = cache_dir
+            cache_dir = pathlib.Path(cache_dir)
+            old_dir = memo._cache_dir
+            if old_dir == cache_dir:
+                return
+            if not make_cache_path(cache_dir):
+                warnings.warn(
+                    "Failed to create the cache directory. The existing "
+                    "directory will be used instead.",
+                    stacklevel=2
+                )
+                return
+            try:
+                if os.path.isdir(old_dir):
+                    shutil.rmtree(old_dir)
+            except OSError: # We cant clean up the directory, oh well
+                pass
+            memo._cache_dir = cache_dir
 
-    @classmethod
-    def set_redis_client(cls, redis: Optional["Redis"]) -> None:
-        """Set the redis client for the memo cache API."""
-        try:
-            from redis import Redis
-        except ImportError:
-            raise RuntimeError(
-                "Attempted to use redis support, but the `redis` package is not "
-                "installed. Use 'pip install commandcenter[redis]'."
-            )
-        with cls._lock:
-            with _memo_caches._caches_lock:
-                for cache in _memo_caches._function_caches.values():
-                    if isinstance(cache, caches.REDIS.cls):
-                        warnings.warn(
-                            "Setting a new Redis client instance while Redis "
-                            "caches already exist for memoized functions can "
-                            "lead to cache misses.",
-                            stacklevel=2
-                        )
-                if redis is None:
-                    cls._redis = Redis(max_connections=10)
-                else:
-                    cls._redis = redis
 
-    @classmethod
-    def set_memcached_client(cls, memcached: Optional["Memcached"]) -> None:
-        """Set the memcached client for the memo cache API."""
-        try:
-            from pymemcache import PooledClient as Memcached
-        except ImportError:
-            raise RuntimeError(
-                "Attempted to use memcached support, but the `pymemcache` package "
-                "is not installed. Use 'pip install commandcenter[memcached]'."
+def set_redis_client(redis: Optional["Redis"]) -> None:
+    """Set the redis client for the memo cache API."""
+    try:
+        from redis import Redis
+    except ImportError:
+        raise RuntimeError(
+            "Attempted to use redis support, but the `redis` package is not "
+            "installed. Use 'pip install commandcenter[redis]'."
+        )
+    with memo._lock:
+        with _memo_caches._caches_lock:
+            for cache in _memo_caches._function_caches.values():
+                if isinstance(cache, caches.REDIS.cls):
+                    warnings.warn(
+                        "Setting a new Redis client instance while Redis "
+                        "caches already exist for memoized functions can "
+                        "lead to cache misses.",
+                        stacklevel=2
+                    )
+            if redis is None:
+                memo._redis = Redis(max_connections=10)
+            else:
+                memo._redis = redis
+
+
+def set_memcached_client(memcached: Optional["Memcached"]) -> None:
+    """Set the memcached client for the memo cache API."""
+    try:
+        from pymemcache import PooledClient as Memcached
+    except ImportError:
+        raise RuntimeError(
+            "Attempted to use memcached support, but the `pymemcache` package "
+            "is not installed. Use 'pip install commandcenter[memcached]'."
+        )
+    with memo._lock:
+        with _memo_caches._caches_lock:
+            for cache in _memo_caches._function_caches.values():
+                if isinstance(cache, caches.MEMCACHED.cls):
+                    warnings.warn(
+                        "Setting a new Memcached client instance while Memcached "
+                        "caches already exist for memoized functions can "
+                        "lead to cache misses.",
+                        stacklevel=2
+                    )
+            if memcached is None:
+                memo._memcached = Memcached(("localhost", 11211), max_pool_size=10)
+            else:
+                memo._memcached = memcached
+
+
+def make_cache_path(cache_dir: pathlib.Path) -> bool:
+    """Create the directory(s) required to reach the cache path."""
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except OSError:
+        return False
+    else:
+        return True
+
+
+def configure_cache(
+    backend: Callable[[], caches],
+    ttl: int | float | None,
+) -> Tuple[Type[Cache], Dict[str, Any], int | None]:
+    """Configure a cache instance for the memo API."""
+    backend_kwargs = {}
+
+    backend = backend()
+    if backend is caches.REDIS:
+        if not memo._redis:
+            set_redis_client(None)
+        assert is_type(memo._redis, "redis.client.Redis"), "Client not set to Redis instance."
+        backend_kwargs["redis"] = lambda: memo._redis
+    elif backend is caches.MEMCACHED:
+        if not memo._memcached:
+            set_memcached_client(None)
+        assert is_type(memo._memcached, "pymemcache.client.base.PooledClient"), "Client not set to PooledClient instance."
+        backend_kwargs["memcached"] = lambda: memo._memcached
+    elif backend is caches.DISK:
+        if not make_cache_path(memo._cache_dir):
+            warnings.warn(
+                "Failed to create the cache directory. Memoized objects cannot be "
+                "persisted to disk. Objects will be stored in memory.",
+                stacklevel=2
             )
-        with cls._lock:
-            with _memo_caches._caches_lock:
-                for cache in _memo_caches._function_caches.values():
-                    if isinstance(cache, caches.MEMCACHED.cls):
-                        warnings.warn(
-                            "Setting a new Memcached client instance while Memcached "
-                            "caches already exist for memoized functions can "
-                            "lead to cache misses.",
-                            stacklevel=2
-                        )
-                if memcached is None:
-                    cls._memcached = Memcached(("localhost", 11211), max_pool_size=10)
-                else:
-                    cls._memcached = memcached
+            backend = caches.MEMORY
+        else:
+            backend_kwargs["cache_dir"] = lambda: memo._cache_dir
+            
+    if backend is caches.REDIS or backend is caches.MEMCACHED and ttl is None:
+        warnings.warn(
+            "'ttl' cannot be 'None' when using the redis | memcached "
+            "backends. Setting to 86400 seconds",
+            stacklevel=2
+        )
+        ttl = 86400
+
+    return backend.cls, backend_kwargs, ttl
+
+
+def get_cache_control(backend: Callable[[], caches], ttl: int | None) -> int:
+    """Returns the TTL of the cached item in seconds.
+    
+    This value can be sent along in a cache control header.
+    """
+    if backend is caches.REDIS or backend is caches.MEMCACHED and ttl is None:
+        return 86_400
+    elif ttl is None or ttl > 31536000 or backend is caches.DISK:
+        return 31_536_000
+    else:
+        return ttl
 
 
 memo = MemoAPI()

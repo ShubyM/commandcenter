@@ -211,13 +211,13 @@ class BaseSubscriber(Subscriber):
     """Base implementation for a subscriber."""
     def __init__(self) -> None:
         self._subscriptions = set()
-        self._data: Deque[str] = None
+        self._data: Deque[str | bytes] = None
         self._data_waiter: asyncio.Future = None
         self._stop_waiter: asyncio.Future = None
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
     @property
-    def data(self) -> Deque[str]:
+    def data(self) -> Deque[str | bytes]:
         return self._data
 
     @property
