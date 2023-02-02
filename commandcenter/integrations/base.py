@@ -275,10 +275,10 @@ class BaseSubscriber(Subscriber):
             
             if not waiter.done(): # Stop called
                 _LOGGER.debug("%s stopped waiting for data", self.__class__.__name__)
-                waiter.cancel()
                 return SubscriberCodes.STOPPED
             return SubscriberCodes.DATA
         finally:
+            waiter.cancel()
             self._data_waiter = None
 
     def __enter__(self) -> "Subscriber":
