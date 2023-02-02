@@ -425,10 +425,9 @@ class RabbitMQManager(_DistributedManager):
             for fut, subscriber in self._subscribers.items():
                 if not fut.done():
                     subscriber.publish(data)
-            await message.channel.basic_ack(message.delivery.delivery_tag)
         
         task_status.started()
-        await channel.basic_consume(declare_ok.queue, on_message)
+        await channel.basic_consume(declare_ok.queue, on_message, no_ack=True)
 
     async def _wait_for_connection_lost(self, closer: asyncio.Future) -> None:
         # When there are no client subscriptions and no data is coming through,

@@ -468,8 +468,8 @@ class MemoAPI:
             from pymemcache import PooledClient as Memcached
         except ImportError:
             raise RuntimeError(
-                "Attempted to use redis support, but the `redis` package is not "
-                "installed. Use 'pip install commandcenter[redis]'."
+                "Attempted to use memcached support, but the `pymemcache` package "
+                "is not installed. Use 'pip install commandcenter[memcached]'."
             )
         with cls._lock:
             with _memo_caches._caches_lock:

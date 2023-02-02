@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 import pathlib
 import pickle
@@ -16,7 +15,6 @@ except ImportError:
     pass
 try:
     from pymemcache import PooledClient as Memcached
-    from pymemcache.exceptions import MemcacheError
 except ImportError:
     pass
 
@@ -384,12 +382,9 @@ class MemcachedCache(MemoCache):
         key = self._get_memcached_key(key)
         try:
             value = self.memcached.get(key)
-        except MemcacheError as e:
+        except Exception as e:
             _LOGGER.warning("Unable to read from memcached", exc_info=True)
             self._ping()
-            raise CacheError("Unable to read from cache.") from e
-        except Exception as e:
-            _LOGGER.error("Unhandled exception in memcached get", exc_info=True)
             raise CacheError("Unable to read from cache.") from e
         if not value:
             raise CacheKeyNotFoundError("Key not found in memcached cache.")
@@ -400,12 +395,9 @@ class MemcachedCache(MemoCache):
         key = self._get_memcached_key(key)
         try:
             value = self.memcached.set(key, pickled_value, expire=self._memcached_ttl)
-        except MemcacheError as e:
+        except Exception as e:
             _LOGGER.warning("Unable to write to memcached", exc_info=True)
             self._ping()
-            raise CacheError("Unable to write to cache.") from e
-        except Exception as e:
-            _LOGGER.error("Unhandled exception in memcached set", exc_info=True)
             raise CacheError("Unable to write to cache.") from e
         if not value:
             raise CacheError("Unable to write to cache.")
