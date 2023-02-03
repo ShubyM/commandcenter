@@ -31,7 +31,6 @@ class MongoTimeseriesWorker:
         buffer_size: int,
         expire_after: int
     ) -> None:
-        self.expire_after
         self.connection_url = connection_url
         self.database_name = database_name
         self.flush_interval = flush_interval
@@ -144,12 +143,15 @@ class MongoTimeseriesWorker:
                 continue
 
             try:
+                _LOGGER.debug("Writing %i samples", len(self._pending_samples))
                 collection.insert_many(self._pending_samples, ordered=False)
                 self._pending_samples = []
                 self._pending_size = 0
                 self._retries = 0
             except (BulkWriteError, DuplicateKeyError):
-                pass
+                self._pending_samples = []
+                self._pending_size = 0
+                self._retries = 0
             except PyMongoError:
                 # Attempt to send these logs on the next call instead
                 done = True

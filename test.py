@@ -1,40 +1,55 @@
 import asyncio
-from typing import Optional
+import csv
+import random
+from datetime import datetime, timedelta
+from typing import List, Dict
 
-import aiormq
-from aiormq.abc import DeliveredMessage
-from pamqp.commands import Basic
+from motor.motor_asyncio import AsyncIOMotorClient
 
-MESSAGE: Optional[DeliveredMessage] = None
+from commandcenter.timeseries.handler import MongoTimeseriesHandler
+from commandcenter.timeseries.stream import get_timeseries
+
+
+START = datetime.now() + timedelta(hours=36)
+
+def get_sensor_id() -> int:
+    return random.randint(1000, 1010)
+
+def random_samples(n: int) -> List[Dict[str, datetime | int | float]]:
+    samples = []
+    subscription = get_sensor_id()
+    t = START
+    for _ in range(n):
+        samples.append({"timestamp": t, "value": random.randint(1,100), "subscription": subscription})
+        t = t + timedelta(seconds=random.random()*10)
+    return samples
+
+def insert_data():
+    handler = MongoTimeseriesHandler()
+    for _ in range(50):
+        samples = random_samples(1000)
+        for sample in samples:
+            handler.send(sample)
+    handler.flush(True)
+    handler.close()
 
 
 async def main():
-    global MESSAGE
+    client = AsyncIOMotorClient()
+    with open("test_timeseries.csv", "w", newline='') as fh:
+        writer = csv.writer(fh, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        async for timestamp, data in get_timeseries(
+            client,
+            {999, 1000, 1001, 1002, 1003, 1004, 1005, 1006, 1011},
+            "commandcenter",
+            start_time=START-timedelta(minutes=30),
+            end_time=START+timedelta(minutes=30)
+        ):
+            row = [timestamp.isoformat(), *data]
+            writer.writerow(row)
 
-    body = b'Hello World!'
-
-    # Perform connection
-    connection = await aiormq.connect("amqp://guest:guest@localhost//")
-
-    # Creating a channel
-    channel = await connection.channel()
-
-    declare_ok = await channel.queue_declare("hello", auto_delete=True)
-
-    # Sending the message
-    confirm = await channel.basic_publish(body, routing_key='hello')
-    print(type(confirm))
-
-    print(isinstance(confirm, Basic.Ack))
-    print(f" [x] Sent {body}")
-
-    MESSAGE = await channel.basic_get(declare_ok.queue)
-    print(f" [x] Received message from {declare_ok.queue!r}")
-
-
-loop = asyncio.get_event_loop()
-loop.run_until_complete(main())
-
-assert MESSAGE is not None
-assert MESSAGE.routing_key == "hello"
-assert MESSAGE.body == b'Hello World!'
+if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    insert_data()
+    #asyncio.run(main())

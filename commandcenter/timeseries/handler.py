@@ -1,7 +1,8 @@
 import functools
+from datetime import datetime
 from typing import Any, Dict
 
-from commandcenter.timeseries.mongo.worker import MongoTimeseriesWorker
+from commandcenter.timeseries.worker import MongoTimeseriesWorker
 from commandcenter.__version__ import __title__ as DATABASE_NAME
 
 
@@ -29,11 +30,12 @@ class MongoTimeseriesHandler:
         if self.worker is None:
             self.worker = self._worker_factory()
             self.worker.start()
-        elif not self.worker.is_running():
-            worker, self.worker = self.worker, None
-            worker.stop()
-            self.worker = self._worker_factory()
-            self.worker.start()
+
+        # elif not self.worker.is_running():
+        #     worker, self.worker = self.worker, None
+        #     worker.stop()
+        #     self.worker = self._worker_factory()
+        #     self.worker.start()
 
         return self.worker
 
@@ -48,6 +50,7 @@ class MongoTimeseriesHandler:
 
     def send(self, sample: Dict[str, Any]):
         """Send a sample to the worker."""
+        sample["expire"] = datetime.utcnow()
         self.get_worker().enqueue(sample)
 
     def close(self) -> None:
