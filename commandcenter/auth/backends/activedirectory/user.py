@@ -18,7 +18,7 @@ class LDAPItem(str):
     @classmethod
     def validate(cls, v):
         if not isinstance(v, list):
-            raise TypeError("Expected list")
+            raise TypeError(f"Expected list, got {type(v)}")
         if len(v) > 1:
             raise ValueError(f"Too many values for {cls.__name__}. Expected 1, got {len(v)}")
         elif len(v) < 1:

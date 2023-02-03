@@ -7,6 +7,7 @@ import pathlib
 import random
 import re
 import subprocess
+import timeit
 from collections.abc import AsyncIterable, Awaitable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -68,6 +69,21 @@ class ObjSelection(str, Enum):
         
         obj.cls = type_  # type: ignore[attr-defined]
         return obj
+
+
+class Timer:
+    """A context managed timer for determining RTT."""
+    def __init__(self) -> None:
+        self.start: float = None
+        self.elapsed: float = None
+
+    def __enter__(self):
+        self.elapsed = None
+        self.start = timeit.default_timer()
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.elapsed = timeit.default_timer() - self.start
 
 
 def snake_to_camel(string: str) -> str:

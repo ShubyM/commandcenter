@@ -1,7 +1,14 @@
-from typing import Set
+import logging
+from datetime import datetime, timedelta
+from typing import Any, Dict, Set
 
-from pydantic import BaseModel
+from jose import ExpiredSignatureError, JWTError, jwt
+from pydantic import BaseModel, SecretStr
 from starlette.authentication import BaseUser as StarletteBaseUser
+
+
+
+_LOGGER = logging.getLogger("commandcenter.auth")
 
 
 
@@ -33,3 +40,56 @@ class Token(BaseModel):
     """Access token model."""
     access_token: str
     token_type: str
+
+
+class TokenHandler(BaseModel):
+    """Model for issuing and validating JWT's."""
+    key: SecretStr
+    expire: timedelta = 1800
+    algorithm: str = "HS256"
+
+    def issue(self, claims: Dict[str, Any]) -> str:
+        """Issue a JWT.
+        
+        Args:
+            claims: The JWT token claims.
+        
+        Returns:
+            token: The signed JWT.
+
+        Raises:
+            JWTError: Error encoding token.
+        """
+        to_encode = claims.copy()
+        expire_at = datetime.utcnow() + self.expire
+        to_encode.update({"exp": expire_at})
+        
+        return jwt.encode(
+            to_encode,
+            self.key.get_secret_value(),
+            algorithm=self.algorithm
+        )
+
+    def validate(self, token: str) -> str | None:
+        """Validate a JWT and return the username.
+        
+        Args:
+            token: The token to validate.
+
+        Returns:
+            username: The username the token is associated to. If the token is
+                invalid, returns `None`
+        """
+        try:
+            payload = jwt.decode(
+                token,
+                self.key.get_secret_value(),
+                algorithms=[self.algorithm]
+            )
+            return payload.get("sub")
+        except ExpiredSignatureError:
+            _LOGGER.debug("Token expired")
+            return
+        except JWTError:
+            _LOGGER.debug("Received invalid token")
+            return

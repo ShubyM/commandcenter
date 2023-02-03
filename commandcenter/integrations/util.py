@@ -45,7 +45,6 @@ async def iter_subscribers(*subscribers: Subscriber) -> AsyncIterable[str]:
                     raise DroppedSubscriber()
             yield getter.result()
     finally:
-        for subscriber in subscribers: subscriber.stop(None)
         getter.cancel()
         wrapper.cancel()
         

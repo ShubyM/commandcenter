@@ -9,6 +9,10 @@ class CacheType(str, Enum):
     SINGLETON = "singleton"
 
 
+class NoResult:
+    """Placeholder class for return values when None is meaningful."""
+
+
 def is_type(obj: object, fqn_type_pattern: str | re.Pattern[str]) -> bool:
     """Check type without importing expensive modules.
     

@@ -13,8 +13,9 @@ import weakref
 from enum import Enum
 from typing import Any, Dict, List, Pattern
 
-from commandcenter.caching.core.exceptions import UnhashableTypeError
-from commandcenter.caching.core.util import CacheType, is_type, repr_
+from commandcenter.caching.exceptions import UnhashableTypeError
+from commandcenter.caching.util import CacheType, NoResult, is_type, repr_
+
 
 
 # Arbitrary item to denote where we found a cycle in a hashed object.
@@ -250,7 +251,7 @@ class CacheFuncHasher:
             # That means that this condition must come before the next
             # condition, which just checks for StringIO/BytesIO.
             h = hashlib.new("md5")
-            obj_name = getattr(obj, "name", "wonthappen")  # Just to appease MyPy.
+            obj_name = getattr(obj, "name", "wonthappen")
             self.update(h, obj_name)
             self.update(h, os.path.getmtime(obj_name))
             self.update(h, obj.tell())
@@ -299,7 +300,3 @@ class CacheFuncHasher:
             for item in reduce_data:
                 self.update(h, item)
             return h.digest()
-
-
-class NoResult:
-    """Placeholder class for return values when None is meaningful."""

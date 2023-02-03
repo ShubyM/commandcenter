@@ -1,51 +1,11 @@
-import logging
-from datetime import datetime, timedelta
-from typing import Any, Dict, Tuple
+from typing import Tuple
 
-from jose import ExpiredSignatureError, JWTError, jwt
-from pydantic import BaseModel, SecretStr
 from starlette.authentication import AuthenticationBackend, AuthCredentials
 from starlette.requests import HTTPConnection
 
-from commandcenter.auth.models import BaseUser
+from commandcenter.auth.models import BaseUser, TokenHandler
 from commandcenter.auth.protocols import AuthenticationClient
 
-
-
-_LOGGER = logging.getLogger("commandcenter.auth")
-
-
-class TokenHandler(BaseModel):
-    """Model for issuing and validating JWT's."""
-    key: SecretStr
-    expire: timedelta = 1800
-    algorithm: str = "HS256"
-
-    def issue(self, claims: Dict[str, Any]) -> str:
-        to_encode = claims.copy()
-        expire_at = datetime.utcnow() + self.expire
-        to_encode.update({"exp": expire_at})
-        
-        return jwt.encode(
-            to_encode,
-            self.key.get_secret_value(),
-            algorithm=self.algorithm
-        )
-
-    def validate(self, token: str) -> str | None:
-        try:
-            payload = jwt.decode(
-                token,
-                self.key.get_secret_value(),
-                algorithms=[self.algorithm]
-            )
-            return payload.get("sub")
-        except ExpiredSignatureError:
-            _LOGGER.debug("Token expired")
-            return
-        except JWTError:
-            _LOGGER.debug("Received invalid token")
-            return
 
 
 class BaseAuthenticationBackend(AuthenticationBackend):
@@ -62,12 +22,12 @@ class BaseAuthenticationBackend(AuthenticationBackend):
 
     async def authenticate(self, conn: HTTPConnection) -> Tuple[AuthCredentials, BaseUser] | None:
         """Validate a token from the connection and return a user along with
-        their scopes
+        their scopes.
         
-        Exceptions originating from the client *must* be caught and re-raised
+        Exceptions originating from the client must be caught and re-raised
         into an `AuthenticationError`.
 
-        If a user is unauthenticated, this method *may* return `None` or some
+        If a user is unauthenticated, this method may return `None` or some
         other unauthenticated user class.
         """
         raise NotImplementedError()

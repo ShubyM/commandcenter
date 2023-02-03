@@ -1,13 +1,14 @@
 import asyncio
 from collections.abc import AsyncIterable, Sequence
 from types import TracebackType
-from typing import Any, Deque, Protocol, Set, Type
+from typing import Any, Deque, Dict, Protocol, Set, Type
 
 from commandcenter.integrations.models import (
     DroppedSubscriptions,
     SubscriberCodes,
     Subscription
 )
+from commandcenter.types import JSONContent
 
 
 
@@ -32,8 +33,12 @@ class Client(Protocol):
         ...
 
     @property
-    def buffer(self) -> int:
-        """Returns the number of messages buffered on the client."""
+    def info(self) -> Dict[str, JSONContent]:
+        """Returns current information on the client."""
+        ...
+
+    def clear(self) -> None:
+        """Clear all buffered data on the client."""
         ...
     
     async def close(self) -> None:
@@ -79,6 +84,11 @@ class Client(Protocol):
 
 class Connection(Protocol):
     @property
+    def info(self) -> Dict[str, JSONContent]:
+        """Returns current information on the connection."""
+        ...
+
+    @property
     def online(self) -> bool:
         """Returns `True` if the connection is 'online' and is allowed to pubish
         data to the client.
@@ -94,7 +104,7 @@ class Connection(Protocol):
         """Toggle the online status of the connection."""
         ...
 
-    async def run(self, confirm: asyncio.Future, *args: Any, **kwargs: Any) -> None:
+    async def run(self, *args: Any, **kwargs: Any) -> None:
         """Main implementation for the connection.
         
         This method should receive/retrieve, parse, and validate data from the
@@ -110,7 +120,7 @@ class Connection(Protocol):
         data_queue: asyncio.Queue,
         *args: Any,
         **kwargs: Any
-    ) -> asyncio.Future:
+    ) -> asyncio.Task:
         """Start the connection.
 
         Args:
@@ -119,8 +129,7 @@ class Connection(Protocol):
             data_queue: A queue where processed data is put.
         
         Returns:
-            fut: The running task in the background. If cancelled, this must
-                close the connection.
+            fut: The connection task.
         """
         ...
 
@@ -132,6 +141,12 @@ class Manager(Protocol):
         accept new subscriptions.
         """
         ...
+
+    @property
+    def info(self) -> Dict[str, JSONContent]:
+        """Returns current information on the connection."""
+        ...
+        
 
     @property
     def subscriptions(self) -> Set[Subscription]:
@@ -166,6 +181,12 @@ class Subscriber(Protocol):
     def data(self) -> Deque[str]:
         """Returns the data buffer for this subscriber."""
         ...
+
+    @property
+    def info(self) -> Dict[str, JSONContent]:
+        """Returns current information on the connection."""
+        ...
+        
 
     @property
     def stopped(self) -> bool:
@@ -215,6 +236,11 @@ class Subscriber(Protocol):
 
 
 class Lock:
+    @property
+    def info(self) -> Dict[str, JSONContent]:
+        """Returns current information on the connection."""
+        ...
+        
     @property
     def ttl(self) -> float:
         """The TTL used for locks in seconds."""

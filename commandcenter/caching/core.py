@@ -1,86 +1,75 @@
-import asyncio
 import functools
 import hashlib
 import inspect
 import logging
 import threading
-import types
-from typing import Any, Callable, Generator, List, Tuple, Union
+from types import FunctionType
+from typing import Any, Callable, Dict, Generator, List, Tuple
 
-from commandcenter.caching.core.exceptions import (
+from commandcenter.caching.caches.base import BaseCache
+from commandcenter.caching.exceptions import (
     CacheKeyNotFoundError,
     UnhashableParamError,
     UnhashableTypeError,
     UnserializableReturnValueError
 )
-from commandcenter.caching.core.hashing import update_hash
-from commandcenter.caching.core.util import CacheType
+from commandcenter.caching.hashing import update_hash
+from commandcenter.caching.util import CacheType
+
 
 
 _LOGGER = logging.getLogger("commandcenter.caching")
-
-
-class Cache:
-    """Standard function cache interface."""
-    def __init__(self) -> None:
-        self._execution_lock: Union[threading.Lock, asyncio.Lock] = None
-
-    def read_result(self, value_key: str) -> Any:
-        """Read a value and associated messages from the cache.
-        
-        Raises:
-          CacheKeyNotFoundError: Raised if value_key is not in the cache.
-        """
-        raise NotImplementedError()
-
-    def write_result(self, value_key: str, value: Any) -> None:
-        """Write a value to the cache, overwriting any existing result that uses
-        the value_key.
-
-        Raises:
-            CacheError: Raised if unable to write to cache.
-        """
-        raise NotImplementedError()
-
-    def invalidate(self, value_key: str) -> None:
-        """Invalidate a cached value."""
-        raise NotImplementedError()
-
-    def clear(self) -> None:
-        """Clear all values from this function cache."""
-        raise NotImplementedError()
-
-    def set_lock(self, lock: Union[threading.Lock, asyncio.Lock]) -> None:
-        self._execution_lock = lock
     
 
 class CachedFunction:
     """Encapsulates data for a cached function instance."""
-    def __init__(self, func: types.FunctionType):
+    def __init__(self, func: FunctionType):
         self.func = func
 
     @property
     def cache_type(self) -> CacheType:
         raise NotImplementedError
 
-    def get_function_cache(self, function_key: str) -> Cache:
+    def get_function_cache(self, function_key: str) -> BaseCache:
         """Get or create the function cache for the given key."""
         raise NotImplementedError
+
+
+class CacheCollection:
+    """Manages all cache instances"""
+    def __init__(self):
+        self._caches_lock = threading.Lock()
+        self._function_caches: Dict[str, BaseCache] = {}
+    
+    def get_cache(
+        self,
+        func: Callable[[Any], Any],
+        key: str,
+        display_name: str,
+        *args: Any,
+        **kwargs: Any
+    ) -> BaseCache:
+        """Return a cache instance."""
+        raise NotImplementedError()
+
+    def clear_all(self) -> None:
+        """Clear all caches."""
+        raise NotImplementedError()
 
 
 def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
     """Create a wrapper for a CachedFunction."""
     func = cached_func.func
-    function_key = _make_function_key(cached_func.cache_type, cached_func.func)
+    function_key = make_function_key(cached_func.cache_type, cached_func.func)
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         """This function wrapper will only call the underlying function in
         the case of a cache miss.
         """
         cache = cached_func.get_function_cache(function_key=function_key)
-        with cache._execution_lock:
-            rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
+        with cache.execution_lock:
+            rw = read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
             try:
                 next(rw)
             except StopIteration as e:
@@ -94,13 +83,13 @@ def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
                 return return_value
 
     @functools.wraps(func)
-    async def async_wrapper(*args, **kwargs):
+    async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
         """This function wrapper will only call the underlying function in
         the case of a cache miss.
         """
         cache = cached_func.get_function_cache(function_key=function_key)
-        async with cache._execution_lock:
-            rw = _read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
+        async with cache.execution_lock:
+            rw = read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
             try:
                 next(rw)
             except StopIteration as e:
@@ -114,19 +103,16 @@ def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
                 return return_value
 
     if inspect.iscoroutinefunction(func):
-        cache_wrapper = async_wrapper
-    else:
-        cache_wrapper = wrapper
-
-    return cache_wrapper
+        return async_wrapper
+    return wrapper
 
 
-def _read_write_cached_value(
+def read_write_cached_value(
     cached_func: CachedFunction,
     function_key: str,
     func: Callable[[Any], Any],
-    *args,
-    **kwargs
+    *args: Any,
+    **kwargs: Any
 ) -> Generator[None, Any, Any]:
     """A common workflow for reading/writing from/to a cache in both a sync and
     async wrapper.
@@ -140,7 +126,7 @@ def _read_write_cached_value(
     # Retrieve the function's cache object. We must do this inside the
     # wrapped function, because caches can be invalidated at any time.
     cache = cached_func.get_function_cache(function_key)
-    value_key = _make_value_key(cached_func.cache_type, func, *args, **kwargs)
+    value_key = make_value_key(cached_func.cache_type, func, *args, **kwargs)
     try:
         result = cache.read_result(value_key)
         _LOGGER.debug("Cache hit: %s", func)
@@ -159,8 +145,11 @@ def _read_write_cached_value(
                 return_value=return_value, func=cached_func.func
             )
 
-def _make_value_key(
-    cache_type: CacheType, func: types.FunctionType, *args, **kwargs
+def make_value_key(
+    cache_type: CacheType,
+    func: FunctionType,
+    *args: Any,
+    **kwargs: Any
 ) -> str:
     """Create the key for a value within a cache.
     
@@ -176,7 +165,7 @@ def _make_value_key(
     # function.
     arg_pairs: List[Tuple[str | None, Any]] = []
     for arg_idx in range(len(args)):
-        arg_name = _get_positional_arg_name(func, arg_idx)
+        arg_name = get_positional_arg_name(func, arg_idx)
         arg_pairs.append((arg_name, args[arg_idx]))
 
     for kw_name, kw_val in kwargs.items():
@@ -213,7 +202,7 @@ def _make_value_key(
     return value_key
 
 
-def _make_function_key(cache_type: CacheType, func: types.FunctionType) -> str:
+def make_function_key(cache_type: CacheType, func: FunctionType) -> str:
     """Create the unique key for a function's cache.
     
     A function's key is stable across multiple calls, and changes when the
@@ -254,7 +243,7 @@ def _make_function_key(cache_type: CacheType, func: types.FunctionType) -> str:
     return cache_key
 
 
-def _get_positional_arg_name(func: types.FunctionType, arg_index: int) -> str | None:
+def get_positional_arg_name(func: FunctionType, arg_index: int) -> str | None:
     """Return the name of a function's positional argument.
     
     If arg_index is out of range, or refers to a parameter that is not a
@@ -277,37 +266,41 @@ def _get_positional_arg_name(func: types.FunctionType, arg_index: int) -> str | 
     return None
 
 
-def wrap_sync(
-    cached_func: CachedFunction,
-    *args: Any,
-    **kwargs: Any
-) -> Any:
-    """Wraps a sync function to be cached."""
-    wrapped = create_cache_wrapper(cached_func)
-    return wrapped(*args, **kwargs)
+def create_cached_func_wrapper(
+    func: FunctionType,
+    cached_func: CachedFunction
+) -> Callable[..., Any]:
+
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        """Wraps a sync function to be cached."""
+        wrapped = create_cache_wrapper(cached_func)
+        return wrapped(*args, **kwargs)
 
 
-async def wrap_async(
-    cached_func: CachedFunction,
-    *args: Any,
-    **kwargs: Any
-) -> Any:
-    """Wraps an async function to be cached."""
-    wrapped = create_cache_wrapper(cached_func)
-    return await wrapped(*args, **kwargs)
+    async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+        """Wraps an async function to be cached."""
+        wrapped = create_cache_wrapper(cached_func)
+        return await wrapped(*args, **kwargs)
+
+    if inspect.iscoroutinefunction(func):
+        return async_wrapper
+    return wrapper
 
 
-def clear_cached_func(cached_func: CachedFunction) -> None:
-    """Clear a `Cache` instance."""
-    function_key = _make_function_key(cached_func.cache_type, cached_func.func)
-    cache = cached_func.get_function_cache(function_key=function_key)
-    cache.clear()
+def clear_cached_func(cached_func: CachedFunction) -> Callable[[], None]:
+    """Calls the `clear` method on a cache."""
+    def wrapper():
+        function_key = make_function_key(cached_func.cache_type, cached_func.func)
+        cache = cached_func.get_function_cache(function_key)
+        cache.clear()
+    return wrapper
 
 
-def invalidate_cached_value(cached_func: CachedFunction) -> None:
-    def wraps(*args: Any, **kwargs: Any) -> None:
-        function_key = _make_function_key(cached_func.cache_type, cached_func.func)
-        cache = cached_func.get_function_cache(function_key=function_key)
-        value_key = _make_value_key(cached_func.cache_type, cached_func.func, *args, **kwargs)
+def invalidate_cached_value(cached_func: CachedFunction) -> Callable[..., None]:
+    """Calls the `invalidate` method on a cache."""
+    def wrapper(*args: Any, **kwargs: Any) -> None:
+        function_key = make_function_key(cached_func.cache_type, cached_func.func)
+        cache = cached_func.get_function_cache(function_key)
+        value_key = make_value_key(cached_func.cache_type, cached_func.func, *args, **kwargs)
         cache.invalidate(value_key)
-    return wraps
+    return wrapper

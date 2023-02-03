@@ -3,10 +3,11 @@ import logging
 import math
 import socket
 import subprocess
-import timeit
+import sys
 from typing import List, Tuple
 
 from commandcenter.auth.backends.activedirectory.exceptions import NoHostsFound
+from commandcenter.util import Timer
 
 
 
@@ -62,6 +63,9 @@ def discover_domain_controllers(
         NoHostsFound: No hostnames were found for the given domain.
         OSError: Error calling nltest.
     """
+    if sys.platform != "win32":
+        raise RuntimeError("Domain controller discovery only available on windows platforms.")
+        
     domain = domain or discover_domain()
 
     def list_domain_controllers() -> List[str]:
@@ -133,18 +137,3 @@ def get_rtt(
             sock.close()
     else:
         return sum(rtt)/len(rtt)
-
-
-class Timer:
-    """A context managed timer for determining RTT."""
-    def __init__(self) -> None:
-        self.start: float = None
-        self.elapsed: float = None
-
-    def __enter__(self):
-        self.elapsed = None
-        self.start = timeit.default_timer()
-        return self
-
-    def __exit__(self, *args, **kwargs):
-        self.elapsed = timeit.default_timer() - self.start

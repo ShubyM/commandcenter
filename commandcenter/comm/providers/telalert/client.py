@@ -45,7 +45,7 @@ class TelAlertClient:
     ) -> None:
         path = pathlib.Path(path)
         if not path.exists():
-            raise FileNotFoundError(path.__str__())
+            raise FileNotFoundError(str(path))
         self._path = path
         self._host = host
         self._timeout = timeout
@@ -68,8 +68,10 @@ class TelAlertClient:
             commands.append([self._path, "-g", group, "-m", msg, "-host", self._host, "-subject", subject])
         for destination in message.destinations:
             commands.append([self._path, "-i", destination, "-m", msg, "-host", self._host, "-subject", subject])
+        
         tasks = [self._execute_command(command) for command in commands]
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        
         for maybe_exc, command in zip(results, commands):
             if isinstance(maybe_exc, BaseException):
                 _LOGGER.error("Notification failed", exc_info=maybe_exc, extra={"command": command})

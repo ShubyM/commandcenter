@@ -23,6 +23,9 @@ class requires:
         raise_on_no_scopes: If `True` a `NotConfigured` error will be raised
             when a route with no required scopes is hit.
 
+    Raises:
+        HTTPException: 401 if user is unauthenticated, 403 if not authorized.
+
     Examples:
     Depending on how you've structured your API, the most common way to use `requires`
     is in a router dependency...
@@ -37,8 +40,8 @@ class requires:
     ...     ...
     
     Its pretty common that your API will have to go out to a different service to
-    access data. The target service may have layered permissions that grant increasing
-    amounts of access (eg. READ, READ/WRITE, ADMIN). All permissions allow reading
+    access data. The target service may have layered scopes that grant increasing
+    amounts of access (eg. READ, READ/WRITE, ADMIN). All scopes allow reading
     data in this case but the user may only belong to one group (eg. READ/WRITE).
     For this we can specify that a user have 'all' or 'any' of the scopes...
     >>> @router.get("/useraccounts", dependencies=[
@@ -115,7 +118,7 @@ class requires:
         
         if self.any and any([scope in scopes for scope in self.scopes]):
             return user
-        elif all([permission in scopes for permission in self.scopes]):
+        elif all([scope in scopes for scope in self.scopes]):
             return user
         else:
             raise HTTPException(

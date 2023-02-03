@@ -1,7 +1,9 @@
 import asyncio
 import contextlib
+import functools
 import logging
 import re
+import sys
 from collections import deque
 from collections.abc import Sequence
 from typing import AsyncGenerator, Deque
@@ -109,13 +111,14 @@ class ActiveDirectoryClient(AuthenticationClient):
         tls: `True` if connection should use TLS.
         maxconn: The maximum LDAP connection pool size.
         mechanism: The authentication mechanism to use on the client. Currently
-            only supports SIMPLE and GSSAPI
+            only supports SIMPLE and GSSAPI.
+        username: Username for client connections.
+        password: Password for client connections.
 
     Raises:
-        LDAPError: Error in LDAPClient when trying to get the rootDSE.
+        LDAPError: Error in `LDAPClient` when trying to get the rootDSE.
         OSError: `discover_domain` or `discover_domain_controllers` failed.
         NoHostsFound: No hosts found with `discover_domain_controllers`.
-        ValueError: Invalid authentication mechanism.
 
     Note: Bonsai does not support the `ProacterEventLoop` therefore we run
     all I/O in an external threadpool. If proper Windows support comes around,
@@ -134,6 +137,11 @@ class ActiveDirectoryClient(AuthenticationClient):
         mechanism = mechanism.upper()
         if mechanism not in ("GSSAPI", "SIMPLE"):
             raise ValueError(f"Invalid authentication mechanism {mechanism}")
+        if not hosts and sys.platform != "win32":
+            raise ValueError(
+                "Automatic domain controller discovery is only available on "
+                "windows platforms. You must explicitely pass the controller hosts."
+            )
 
         domain = (domain or discover_domain()).upper()
         hosts = hosts or discover_domain_controllers()
@@ -142,12 +150,12 @@ class ActiveDirectoryClient(AuthenticationClient):
         bases = deque(
             [
                 get_root_dse(
-                    url,
-                    domain,
-                    mechanism,
-                    tls,
-                    username,
-                    password
+                    url=url,
+                    domain=domain,
+                    mechanism=mechanism,
+                    tls=tls,
+                    username=username,
+                    password=password
                 ) for url in controllers
             ]
         )
@@ -180,11 +188,9 @@ class ActiveDirectoryClient(AuthenticationClient):
         """Rotate the domain controller hosts and connection pools."""
         self._controllers.rotate(1)
         self._bases.rotate(1)
-        # We dont want to close the pool because another coroutine may be
-        # waiting on a response which could trigger a cascade of rotates
-        # as that one fails and rotates and so on...
+        # Dont close the pool, another coroutine may be waiting on a result.
+        # Closing the pool could result in a cascade effect of rotates.
         self._pools.rotate(1)
-        _LOGGER.debug("Client rotated")
 
     @contextlib.asynccontextmanager
     async def _get_connection(self) -> AsyncGenerator[LDAPConnection, None]:
@@ -248,13 +254,13 @@ class ActiveDirectoryClient(AuthenticationClient):
         """
         async with self._get_connection() as conn:
             base = self._bases[0]
-            results = await anyio.to_thread.run_sync(
+            partial = functools.partial(
                 conn.search,
-                base,
-                LDAPSearchScope.SUB,
-                f"(&(objectCategory=user)(sAMAccountName={username}))",
-                limiter=self._limiter
+                base=base,
+                scope=LDAPSearchScope.SUB,
+                filter_exp=f"(&(objectCategory=user)(sAMAccountName={username}))"
             )
+            results = await anyio.to_thread.run_sync(partial, limiter=self._limiter)
             
             if len(results) < 1:
                 raise UserNotFound()
@@ -269,3 +275,6 @@ class ActiveDirectoryClient(AuthenticationClient):
                     scopes.add(match.group(1))
             
             return ActiveDirectoryUser(scopes=scopes, **result)
+
+    def __len__(self) -> int:
+        return len(self._controllers)

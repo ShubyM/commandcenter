@@ -47,12 +47,12 @@ class ActiveDirectoryBackend(BaseAuthenticationBackend):
         if username is None:
             return
         
-        for _ in range(len(self.client.dcs)):
+        for _ in range(len(self.client)):
             try:
                 user = await self.client.get_user(username)
             except LDAPError:
-                self.client.rotate()
                 _LOGGER.warning("Rotating client", exc_info=True)
+                self.client.rotate()
                 continue
             except Exception as e:
                 _LOGGER.error("An unhandled error occurred", exc_info=True)

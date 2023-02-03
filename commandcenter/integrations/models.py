@@ -1,4 +1,5 @@
 import hashlib
+from datetime import datetime
 from enum import IntEnum
 from typing import Any, Dict, List, Sequence, Set
 
@@ -14,7 +15,7 @@ from commandcenter.util import json_loads
 class Subscription(BaseModel):
     """A hashable base model.
     
-    Models must be json encode/decode(able). Hashes for use the JSON string
+    Models must be json encode/decode(able). Hashes use the JSON string
     representation of the object and are consistent across runtimes.
 
     Hashing: The `dict()` representation of the model is converted to a JSON
@@ -138,3 +139,52 @@ class SubscriberCodes(IntEnum):
     """Codes returned from a `wait` on a subscriber."""
     STOPPED = 1
     DATA = 2
+
+
+class ConnectionInfo(BaseModel):
+    """Model for connection statistics."""
+    name: str
+    online: bool
+    created: datetime
+    uptime: int
+    total_published_messages: int
+    total_subscriptions: int
+
+
+class ClientInfo(BaseModel):
+    """Model for client statistics."""
+    name: str
+    closed: bool
+    data_queue_size: int
+    dropped_connection_queue_size: int
+    created: datetime
+    uptime: int
+    active_connections: int
+    active_subscriptions: int
+    subscription_capacity: int
+    total_connections_serviced: int
+    connection_info: List[Dict[str, str | ConnectionInfo]]
+
+
+class SubscriberInfo(BaseModel):
+    """Model for subscriber statistics."""
+    name: str
+    stopped: bool
+    created: datetime
+    uptime: int
+    total_published_messages: int
+    total_subscriptions: int
+
+
+class ManagerInfo(BaseModel):
+    """Model for manager statistics."""
+    name: str
+    closed: bool
+    created: datetime
+    uptime: int
+    active_subscribers: int
+    active_subscriptions: int
+    subscriber_capacity: int
+    total_subscribers_serviced: int
+    client_info: ClientInfo
+    subscriber_info: List[Dict[str, str | SubscriberInfo]]

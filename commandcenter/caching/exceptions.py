@@ -1,12 +1,13 @@
 from types import FunctionType
-from typing import Any, List
+from typing import Any
 
-from commandcenter.caching.core.util import (
+from commandcenter.caching.util import (
     get_cached_func_name,
     get_fqn_type,
     get_return_value_type
 )
 from commandcenter.exceptions import CommandCenterException
+
 
 
 class CachingException(CommandCenterException):

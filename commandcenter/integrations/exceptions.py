@@ -43,7 +43,3 @@ class ClientClosed(IntegrationError):
 
 class DroppedSubscriber(IntegrationError):
     """Can be raised when a subscriber has been stopped on the manager side."""
-
-
-class LockingError(IntegrationError):
-    """Raised from an error in the locking backend."""

@@ -1,24 +1,32 @@
 import asyncio
-import functools
 import inspect
 import logging
 import threading
 from collections.abc import Iterable
-from typing import Any, Callable, Dict, Optional, TypeVar
+from typing import Any, Callable, TypeVar
 
-from commandcenter.caching.core.cache import (
-    Cache,
+from commandcenter.caching.caches.singleton import SingletonCache
+from commandcenter.caching.core import (
+    CacheCollection,
     CachedFunction,
     clear_cached_func,
-    wrap_async,
-    wrap_sync
+    create_cached_func_wrapper
 )
-from commandcenter.caching.core.caches import SingletonCache
-from commandcenter.caching.core.util import CacheType
+from commandcenter.caching.util import CacheType
 
 
 
 _LOGGER = logging.getLogger("commandcenter.caching.singleton")
+
+
+def iter_singletons() -> Iterable[Any]:
+    """Iterate over all singleton objects in the cache.
+    
+    This can be useful in 'shutdown' functions when you want to make sure all
+    resources in cached instances are cleaned up appropriately.
+    """
+    for obj in singleton_cache_collection:
+        yield obj
 
 
 class SingletonFunction(CachedFunction):
@@ -33,21 +41,17 @@ class SingletonFunction(CachedFunction):
         """A human-readable name for the cached function"""
         return f"{self.func.__module__}.{self.func.__qualname__}"
 
-    def get_function_cache(self, function_key: str) -> Cache:
+    def get_function_cache(self, function_key: str) -> SingletonCache:
         """Get or create the function cache for the given key."""
-        return _singleton_caches.get_cache(
+        return singleton_cache_collection.get_cache(
             func=self.func,
             key=function_key,
             display_name=self.display_name
         )
 
 
-class SingletonCaches(Iterable[Any]):
+class SingletonCaches(CacheCollection, Iterable[Any]):
     """Manages all `SingletonCache` instances"""
-    def __init__(self):
-        self._caches_lock = threading.Lock()
-        self._function_caches: Dict[str, "SingletonCache"] = {}
-
     def get_cache(
         self,
         func: Callable[[Any], Any],
@@ -92,19 +96,6 @@ class SingletonCaches(Iterable[Any]):
                         yield obj
 
 
-_singleton_caches = SingletonCaches()
-
-
-def iter_singletons() -> Iterable[Any]:
-    """Iterate over all singleton objects in the cache.
-    
-    This can be useful in 'shutdown' functions when you want to make sure all
-    resources in cached instances are cleaned up appropriately.
-    """
-    for obj in _singleton_caches:
-        yield obj
-
-
 class SingletonAPI:
     """Implements the public singleton API: the `@singleton` decorator,
     and `singleton.clear()`.
@@ -115,7 +106,7 @@ class SingletonAPI:
         """Function decorator to store singleton objects.
         
         Each singleton object is shared across all threads in the application.
-        Singleton objects *must* be thread-safe, because they can be accessed from
+        Singleton objects must be thread-safe, because they can be accessed from
         multiple threads concurrently.
 
         This decorator works with both sync and async functions.
@@ -169,27 +160,22 @@ class SingletonAPI:
         if func is None:
             def decorator(f):
                 cached_func = SingletonFunction(f)
-                if inspect.iscoroutinefunction(f):
-                    partial = functools.partial(wrap_async, cached_func)
-                else:
-                    partial = functools.partial(wrap_sync, cached_func)
-                partial.clear = functools.partial(clear_cached_func, cached_func)
-                return partial
+                wrapper = create_cached_func_wrapper(f, cached_func)
+                wrapper.clear = clear_cached_func(cached_func)
+                return wrapper
             return decorator
         
         else:
             cached_func = SingletonFunction(func)
-            if inspect.iscoroutinefunction(func):
-                partial = functools.partial(wrap_async, cached_func)
-            else:
-                partial = functools.partial(wrap_sync, cached_func)
-            partial.clear = functools.partial(clear_cached_func, cached_func)
-            return partial
+            wrapper = create_cached_func_wrapper(func, cached_func)
+            wrapper.clear = clear_cached_func(cached_func)
+            return wrapper
 
     @staticmethod
     def clear() -> None:
         """Clear all singleton caches."""
-        _singleton_caches.clear_all()
+        singleton_cache_collection.clear_all()
 
 
+singleton_cache_collection = SingletonCaches()
 singleton = SingletonAPI()
