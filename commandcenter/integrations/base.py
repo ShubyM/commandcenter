@@ -100,7 +100,13 @@ class BaseClient(Client):
                 self._data.get_nowait()
                 self._data.task_done()
         except asyncio.QueueEmpty:
-            return
+            pass
+        try:
+            while True:
+                self._dropped.get_nowait()
+                self._dropped.task_done()
+        except asyncio.QueueEmpty:
+            pass
 
     async def close(self) -> None:
         raise NotImplementedError()

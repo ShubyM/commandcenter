@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import suppress
 from contextvars import Context
 from typing import Callable, Type
 
@@ -192,13 +193,15 @@ class RabbitMQManager(BaseDistributedManager):
                     tg.start_soon(self._publish_messages, connection, exchange)
                     tg.start_soon(lambda: connection.closing)
             except ClientClosed:
+                self._ready.clear()
+                with suppress(Exception):
+                    await connection.close(timeout=2)
                 raise
             except (Exception, anyio.ExceptionGroup):
-                pass
-            finally:
                 self._ready.clear()
-                if not connection.is_closed:
-                    await asyncio.gather(connection.close(timeout=0.5), return_exceptions=True)
+                with suppress(Exception):
+                    await connection.close(timeout=2)
+                pass
             
             sleep = backoff.compute(attempts)
             _LOGGER.warning(

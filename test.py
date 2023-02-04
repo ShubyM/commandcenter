@@ -1,5 +1,17 @@
 from commandcenter.integrations import RedisManager
 
+from commandcenter.http.requests.bearer import OAuth2ResourceOwnerPasswordCredentials
+
+import requests
+
+# auth = OAuth2ResourceOwnerPasswordCredentials(
+#     "http://localhost:8000/token",
+#     username="johndoe",
+#     password="password"
+# )
+# response = requests.get("http://localhost:8000/users/me", auth=auth)
+# print(response.json())
+# response = requests.get("http://localhost:8000/users/me/items", auth=auth)
 
 # import asyncio
 # import csv

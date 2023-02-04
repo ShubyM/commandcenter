@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import suppress
 from contextvars import Context
 from typing import Type
 
@@ -8,6 +9,7 @@ from anyio.abc import TaskStatus
 try:
     from redis.asyncio import Redis
     from redis.asyncio.client import PubSub
+    from redis.exceptions import RedisError
 except ImportError:
     pass
 
@@ -190,11 +192,13 @@ class RedisManager(BaseDistributedManager):
                     tg.start_soon(self._publish_messages, redis, channel)
             except ClientClosed:
                 self._ready.clear()
-                await redis.close(close_connection_pool=True)
+                with suppress(RedisError):
+                    await redis.close(close_connection_pool=True)
                 raise
-            except (Exception, anyio.ExceptionGroup):
+            except (RedisError, anyio.ExceptionGroup):
                 self._ready.clear()
-                await redis.close(close_connection_pool=True)
+                with suppress(RedisError):
+                    await redis.close(close_connection_pool=True)
             
             sleep = backoff.compute(0)
             _LOGGER.warning(

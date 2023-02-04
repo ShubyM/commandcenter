@@ -10,14 +10,13 @@ from aiormq.abc import DeliveredMessage
 
 from commandcenter.eventbus.models import TopicSubscription
 from commandcenter.integrations.models import SubscriberCodes
-from commandcenter.integrations.protocols import Subscriber
 
 
 
 _LOGGER = logging.getLogger("commandcenter.eventbus.subscriber")
 
 
-class EventSubscriber(Subscriber):
+class EventSubscriber:
     def __init__(self) -> None:
         self._subscriptions: Set[TopicSubscription] = set()
         self._data: Deque[bytes] = None
