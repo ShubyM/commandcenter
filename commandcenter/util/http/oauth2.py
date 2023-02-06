@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Tuple
 from urllib.parse import parse_qs, urlsplit, urlunsplit, urlencode
 
+from pydantic import BaseModel
 from httpx import AsyncClient, Client
 from httpx_auth.errors import (
     AuthenticationFailed,
@@ -21,6 +22,11 @@ from httpx_auth.errors import (
 
 
 _LOGGER = logging.getLogger("commandcenter.http.oauth2")
+
+
+class OAuthToken(BaseModel):
+    token: str
+    expiry: float
 
 
 def add_parameters(initial_url: str, extra_parameters: dict) -> str:

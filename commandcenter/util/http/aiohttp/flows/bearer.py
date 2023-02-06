@@ -1,15 +1,23 @@
 import hashlib
+import json
 from collections.abc import AsyncGenerator
+from datetime import datetime
 from typing import Tuple
 
-from aiohttp import ClientRequest, ClientResponse
+from aiohttp import ClientRequest, ClientResponse, hdrs
+from aiohttp.log import client_logger
 from aiohttp.connector import Connection
 from httpx import AsyncClient
+from starlette.datastructures import Secret
 
-from commandcenter.http.aiohttp.auth import AuthFlow
-from commandcenter.http.oauth2 import (
+from commandcenter.util.http.aiohttp.auth import AuthFlow
+from commandcenter.util.http.oauth2 import (
+    OAuthToken,
     TokenMemoryCache,
     add_parameters,
+    decode_base64,
+    is_expired,
+    to_expiry,
     request_new_grant_with_post
 )
 
@@ -41,8 +49,6 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthFlow):
             token will not expire between the time of retrieval and the time
             the request. reaches the actual server. Set it to 0 to deactivate
             this feature and use the same token until actual expiry.
-        client: httpx.AsyncClient instance that will be used to request the token.
-            Use it to provide a custom proxying rule for instance.
         kwargs: all additional authorization parameters that should be put as
             body parameters in the token URL.
     """
@@ -67,7 +73,6 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthFlow):
 
         # Time is expressed in seconds
         self.timeout = int(kwargs.pop("timeout", None) or 60)
-        self.client = kwargs.pop("client", None)
 
         # As described in https://tools.ietf.org/html/rfc6749#section-4.3.2
         self.data = {
@@ -83,40 +88,72 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthFlow):
         all_parameters_in_url = add_parameters(self.token_url, self.data)
         self.state = hashlib.sha512(all_parameters_in_url.encode("unicode_escape")).hexdigest()
 
-        self.token_cache = TokenMemoryCache(sync=False)
+        self.token: OAuthToken = None
 
     async def auth_flow(
         self,
         request: ClientRequest,
         _: Connection
     ) -> AsyncGenerator[None, ClientResponse]:
-        call = self.token_cache.get_token(
-            self.state,
-            early_expiry=self.early_expiry,
-            on_missing_token=self.request_new_token,
+        if self.token is not None:
+            if not is_expired(self.token.expiry, self.early_expiry):
+                request.headers[self.header_name] = self.header_value.format(token=self.token.token)
+                client_logger.debug(
+                    "Using already received authentication, will expire on "
+                    f"{datetime.utcfromtimestamp(self.token.expiry)} (UTC)."
+                )
+                yield
+                return
+            self.token = None
+        
+        original_request = request
+        cookies = original_request.headers.get(hdrs.COOKIE)
+        if cookies:
+            new_headers = {hdrs.COOKIE: cookies}
+        else:
+            new_headers = None
+
+        new_request = ClientRequest(
+            method="POST",
+            url=self.token_url,
+            headers=new_headers,
+            data=self.data,
+            loop=original_request.loop,
+            proxy=original_request.proxy,
+            proxy_auth=original_request.proxy_auth,
+            session=original_request._session,
+            ssl=original_request._ssl,
+            proxy_headers=original_request.proxy_headers,
+            traces=original_request._traces
         )
-        token = await call()
-        request.headers[self.header_name] = self.header_value.format(token=token)
-        yield
+        
+        response = yield request
+        if not 200 <= response.status <= 299:
+            yield original_request
+            return
+        
+        content = await response.json()
 
-    async def request_new_token(self) -> Tuple[str, str | None, int]:
-        client = self.client or AsyncClient()
-        self.configure_client(client)
-        try:
-            # As described in https://tools.ietf.org/html/rfc6749#section-4.3.3
-            call = request_new_grant_with_post(client)
-            token, expires_in = await call(
-                self.token_url,
-                self.data,
-                self.token_field_name
-            )
-        finally:
-            # Close client only if it was created by this module
-            if self.client is None:
-                await client.close()
-        # Handle both Access and Bearer tokens
-        return (self.state, token, expires_in) if expires_in else (self.state, token)
+        token = content.get(self.token_field_name)
+        if not token:
+            raise GrantNotProvided(self.token_field_name, content)
+        
+        expires_in = content.get("expires_in")
 
-    def configure_client(self, client: AsyncClient) -> None:
-        client.auth = (self.username, self.password)
-        client.timeout = self.timeout
+        if expires_in is None:  # Bearer token
+            header, body, other = token.split(".")
+            body = json.loads(decode_base64(body))
+            expiry = body.get("exp")
+            if not expiry:
+                raise TokenExpiryNotProvided(expiry)
+        else:  # Access Token
+            expiry = to_expiry(expires_in)
+
+        client_logger.debug(
+            "Using newly received authentication, expiring on "
+            f"{datetime.utcfromtimestamp(expiry)} (UTC)."
+        )
+        self.token = OAuthToken(token=token, expiry=expiry)
+
+        original_request.headers[self.header_name] = self.header_value.format(token=token)
+        yield original_request

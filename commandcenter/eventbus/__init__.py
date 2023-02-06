@@ -6,6 +6,7 @@ from .exceptions import (
     EventBusSubscriptionLimitError,
     EventBusSubscriptionTimeout
 )
+from .handler import MongoEventHandler
 from .models import Event, EventSubscriberInfo, Topic, TopicSubscription
 from .subscriber import EventSubscriber
 
@@ -18,6 +19,7 @@ __all__ = [
     "EventBusSubscriptionError",
     "EventBusSubscriptionLimitError",
     "EventBusSubscriptionTimeout",
+    "MongoEventHandler",
     "Event",
     "EventSubscriberInfo",
     "Topic",
