@@ -1,6 +1,6 @@
 from starlette.config import Config
 
-from commandcenter.integrations.managers import Managers
+from commandcenter.integrations import Managers
 
 
 
@@ -23,7 +23,7 @@ CC_INTEGRATIONS_MANAGER_SUBSCRIBER_MAXLEN = config(
     default=100
 )
 CC_INTEGRATIONS_MANAGER_TIMEOUT = config(
-    "CC_INTEGRATION_MANAGER_TIMEOUT",
+    "CC_INTEGRATIONS_MANAGER_TIMEOUT",
     cast=float,
     default=5
 )

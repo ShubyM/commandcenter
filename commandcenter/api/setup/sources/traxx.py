@@ -1,20 +1,22 @@
 from typing import Any, Dict, Tuple, Type
 
+from commandcenter.api.config import CC_TIMEZONE
 from commandcenter.caching import singleton
-from commandcenter.config import CC_TIMEZONE
 from commandcenter.exceptions import NotConfigured
-from commandcenter.integrations.managers import Managers
-from commandcenter.integrations.protocols import Client, Manager
+from commandcenter.integrations import Client, Manager, Managers
 
 
 
 def resolve_traxx_client_dependencies(
     manager: Manager
 ) -> Tuple[Type[Client], Tuple[Any], Dict[str, Any], Dict[str, Any]]:
-    """Return all objects for the manager to initialize and support a Traxx client."""
+    """Return all objects for the manager to initialize and support a Traxx client.
+    
+    This must be run in the same thread as the event loop.
+    """
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
-    from commandcenter.config.sources.traxx import (
+    from commandcenter.api.config.sources.traxx import (
         CC_SOURCES_TRAXX_AUTH_FILEPATH,
         CC_SOURCES_TRAXX_CHANNEL_NAME,
         CC_SOURCES_TRAXX_HTTP_BASE_URL,
@@ -27,7 +29,7 @@ def resolve_traxx_client_dependencies(
         CC_SOURCES_TRAXX_STREAM_MAX_SUBSCRIPTIONS,
         CC_SOURCES_TRAXX_STREAM_UPDATE_INTERVAL
     )
-    from commandcenter.http.aiohttp import FileCookieAuthFlow, create_auth_handlers
+    from commandcenter.util import FileCookieAuthFlow, create_auth_handlers
     from commandcenter.sources.traxx import TraxxClient
 
     if not CC_SOURCES_TRAXX_HTTP_BASE_URL:
@@ -67,17 +69,20 @@ def resolve_traxx_client_dependencies(
 
 @singleton
 def setup_traxx_http_client():
-    """Setup Traxx HTTP client from the runtime configuration."""
+    """Configure a Traxx HTTP client from the environment.
+    
+    This must be run in the same thread as the event loop.
+    """
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
-    from commandcenter.config.sources.traxx import (
+    from commandcenter.api.config.sources.traxx import (
         CC_SOURCES_TRAXX_AUTH_FILEPATH,
         CC_SOURCES_TRAXX_HTTP_BASE_URL,
         CC_SOURCES_TRAXX_HTTP_KEEPALIVE_TIMEOUT,
         CC_SOURCES_TRAXX_HTTP_MAX_CONNECTIONS,
         CC_SOURCES_TRAXX_HTTP_REQUEST_TIMEOUT
     )
-    from commandcenter.http.aiohttp import FileCookieAuthFlow, create_auth_handlers
+    from commandcenter.util import FileCookieAuthFlow, create_auth_handlers
     from commandcenter.sources.traxx import TraxxAPI
 
     if not CC_SOURCES_TRAXX_HTTP_BASE_URL:

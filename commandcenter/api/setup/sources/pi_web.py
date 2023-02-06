@@ -1,20 +1,22 @@
 from typing import Any, Dict, Tuple, Type
 
+from commandcenter.api.config import CC_TIMEZONE
 from commandcenter.caching import singleton
-from commandcenter.config import CC_TIMEZONE
 from commandcenter.exceptions import NotConfigured
-from commandcenter.integrations.managers import Managers
-from commandcenter.integrations.protocols import Client, Manager
+from commandcenter.integrations import Client, Manager, Managers
 
 
 
 def resolve_pi_web_client_dependencies(
     manager: Manager
 ) -> Tuple[Type[Client], Tuple[Any], Dict[str, Any], Dict[str, Any]]:
-    """Return all objects for the manager to initialize and support a PI client."""
+    """Return all objects for the manager to initialize and support a PI client.
+    
+    This must be run in the same thread as the event loop.
+    """
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
-    from commandcenter.config.sources.pi_web import (
+    from commandcenter.api.config.sources.pi_web import (
         CC_SOURCES_PIWEB_AUTH_DELEGATE,
         CC_SOURCES_PIWEB_AUTH_DOMAIN,
         CC_SOURCES_PIWEB_AUTH_OPPORTUNISTIC,
@@ -37,7 +39,7 @@ def resolve_pi_web_client_dependencies(
         CC_SOURCES_PIWEB_WS_PROTOCOLS,
         CC_SOURCES_PIWEB_WS_WEB_ID_TYPE
     )
-    from commandcenter.http.aiohttp import NegotiateAuth, create_auth_handlers
+    from commandcenter.util import NegotiateAuth, create_auth_handlers
     from commandcenter.sources.pi_web import PIWebClient
     
     if not CC_SOURCES_PIWEB_WS_BASE_URL:
@@ -85,10 +87,13 @@ def resolve_pi_web_client_dependencies(
 
 @singleton
 def setup_pi_http_client():
-    """Setup PI Web API HTTP client from the runtime configuration."""
+    """Configure a PI Web API HTTP client from the environment.
+    
+    This must be run in the same thread as the event loop.
+    """
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
-    from commandcenter.config.sources.pi_web import (
+    from commandcenter.api.config.sources.pi_web import (
         CC_SOURCES_PIWEB_AUTH_DELEGATE,
         CC_SOURCES_PIWEB_AUTH_DOMAIN,
         CC_SOURCES_PIWEB_AUTH_OPPORTUNISTIC,
@@ -100,7 +105,7 @@ def setup_pi_http_client():
         CC_SOURCES_PIWEB_HTTP_MAX_CONNECTIONS,
         CC_SOURCES_PIWEB_HTTP_REQUEST_TIMEOUT
     )
-    from commandcenter.http.aiohttp import NegotiateAuth, create_auth_handlers
+    from commandcenter.util import NegotiateAuth, create_auth_handlers
     from commandcenter.sources.pi_web import PIWebAPI
 
     if not CC_SOURCES_PIWEB_HTTP_BASE_URL:

@@ -1,5 +1,5 @@
-from commandcenter.integrations.protocols import Manager
-from commandcenter.setup.integrations.managers import setup_manager
+from commandcenter.api.setup.integrations.managers import setup_manager
+from commandcenter.integrations import Manager
 
 
 

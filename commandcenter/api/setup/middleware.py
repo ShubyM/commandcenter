@@ -5,21 +5,21 @@ from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
-from commandcenter.auth import on_error
-from commandcenter.auth.debug import DebugAuthMiddleware
-from commandcenter.config import CC_DEBUG_MODE
-from commandcenter.config.middleware import (
+from commandcenter.api.config import CC_DEBUG_MODE
+from commandcenter.api.config.middleware import (
     CC_MIDDLEWARE_CORS_ORIGINS,
     CC_MIDDLEWARE_ENABLE_CONTEXT,
     CC_MIDDLEWARE_ENABLE_CORS
 )
-from commandcenter.config.scopes import ADMIN_USER
+from commandcenter.api.config.scopes import ADMIN_USER
 from commandcenter.middleware import (
     CorrelationIDMiddleware,
     IPAddressMiddleware,
     UserMiddleware
 )
-from commandcenter.setup.auth import setup_auth_backend
+from commandcenter.api.setup.auth import setup_auth_backend
+from commandcenter.auth import on_error
+from commandcenter.auth.debug import DebugAuthenticationMiddleware
 
 
 
@@ -29,8 +29,8 @@ def setup_auth_middleware(stack: List[Middleware]) -> None:
     This must be run in the same thread as the event loop.
     """
     if CC_DEBUG_MODE:
-        DebugAuthMiddleware.admin_user = ADMIN_USER
-        middleware = DebugAuthMiddleware
+        DebugAuthenticationMiddleware.set_user(ADMIN_USER)
+        middleware = DebugAuthenticationMiddleware
     else:
         middleware = AuthenticationMiddleware
     backend = setup_auth_backend()

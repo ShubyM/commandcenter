@@ -1,16 +1,26 @@
 import hashlib
-from typing import Tuple
+import json
+import logging
+from datetime import datetime
 
-from httpx import Client
-from requests import Request
+import requests
+from requests import HTTPError, Request
 from requests.auth import AuthBase
 
-from commandcenter.http.oauth2 import (
-    TokenMemoryCache,
+from commandcenter.util.http.oauth2 import (
+    GrantNotProvided,
+    InvalidGrantRequest,
+    OAuthToken,
+    TokenExpiryNotProvided,
     add_parameters,
-    request_new_grant_with_post
+    decode_base64,
+    is_expired,
+    to_expiry
 )
 
+
+
+_LOGGER = logging.getLogger("commandcenter.util.http")
 
 
 class OAuth2ResourceOwnerPasswordCredentials(AuthBase):
@@ -39,14 +49,12 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthBase):
             token will not expire between the time of retrieval and the time
             the request. reaches the actual server. Set it to 0 to deactivate
             this feature and use the same token until actual expiry.
-        client: httpx.AsyncClient instance that will be used to request the token.
-            Use it to provide a custom proxying rule for instance.
         kwargs: all additional authorization parameters that should be put as
             body parameters in the token URL.
     """
     def __init__(self, token_url: str, username: str, password: str, **kwargs):
         self.token_url = token_url
-        if not self.token_url:
+        if not token_url:
             raise ValueError("Token URL is mandatory.")
         self.username = username
         if not self.username:
@@ -65,7 +73,6 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthBase):
 
         # Time is expressed in seconds
         self.timeout = int(kwargs.pop("timeout", None) or 60)
-        self.client = kwargs.pop("client", None)
 
         # As described in https://tools.ietf.org/html/rfc6749#section-4.3.2
         self.data = {
@@ -81,36 +88,55 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthBase):
         all_parameters_in_url = add_parameters(self.token_url, self.data)
         self.state = hashlib.sha512(all_parameters_in_url.encode("unicode_escape")).hexdigest()
 
-        self.token_cache = TokenMemoryCache(sync=True)
-
-    def request_new_token(self) -> Tuple[str, str | None, int]:
-        client = self.client or Client()
-        self.configure_client(client)
-        try:
-            # As described in https://tools.ietf.org/html/rfc6749#section-4.3.3
-            call = request_new_grant_with_post(client)
-            token, expires_in = call(
-                self.token_url,
-                self.data,
-                self.token_field_name
-            )
-        finally:
-            # Close client only if it was created by this module
-            if self.client is None:
-                client.close()
-        # Handle both Access and Bearer tokens
-        return (self.state, token, expires_in) if expires_in else (self.state, token)
-
-    def configure_client(self, client: Client) -> None:
-        client.auth = (self.username, self.password)
-        client.timeout = self.timeout
+        self.token: OAuthToken = None
 
     def __call__(self, request: Request):
-        call = self.token_cache.get_token(
-            self.state,
-            early_expiry=self.early_expiry,
-            on_missing_token=self.request_new_token,
+        if self.token is not None:
+            if not is_expired(self.token.expiry, self.early_expiry):
+                request.headers[self.header_name] = self.header_value.format(token=self.token.token)
+                _LOGGER.debug(
+                    "Using already received authentication, will expire on "
+                    f"{datetime.utcfromtimestamp(self.token.expiry)} (UTC)."
+                )
+                return request
+            self.token = None
+        
+        cookies = request.headers.get("Cookie")
+        if cookies:
+            headers = {"Cookie": cookies}
+        else:
+            headers = None
+
+        response = requests.post(self.token_url, data=self.data, headers=headers)
+
+        try:
+            response.raise_for_status()
+        except HTTPError:
+            content = response.json()
+            raise InvalidGrantRequest(content)
+        
+        content = response.json()
+
+        token = content.get(self.token_field_name)
+        if not token:
+            raise GrantNotProvided(self.token_field_name, content)
+        
+        expires_in = content.get("expires_in")
+
+        if expires_in is None:  # Bearer token
+            header, body, other = token.split(".")
+            body = json.loads(decode_base64(body))
+            expiry = body.get("exp")
+            if not expiry:
+                raise TokenExpiryNotProvided(expiry)
+        else:  # Access Token
+            expiry = to_expiry(expires_in)
+
+        _LOGGER.debug(
+            "Using newly received authentication, expiring on "
+            f"{datetime.utcfromtimestamp(expiry)} (UTC)."
         )
-        token = call()
-        request.headers[self.header_name] = self.header_value.format(token=token)
+        self.token = OAuthToken(token=token, expiry=expiry)
+        
+        request.headers[self.header_name] = self.header_value.format(token=self.token.token)
         return request

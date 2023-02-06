@@ -4,6 +4,7 @@ import queue
 import sys
 import traceback
 import warnings
+from typing import Any
 
 from pymongo import MongoClient
 from pymongo.collection import Collection
@@ -23,7 +24,8 @@ class LogWorker(MongoWorker):
         flush_interval: int = 10,
         buffer_size: int = 200,
         max_retries: int = 3,
-        expire_after: int = 1_209_600 # 14 days
+        expire_after: int = 1_209_600, # 14 days
+        **kwargs: Any
     ) -> None:
         super().__init__(
             connection_url,
@@ -31,7 +33,8 @@ class LogWorker(MongoWorker):
             collection_name,
             flush_interval,
             buffer_size,
-            max_retries
+            max_retries,
+            **kwargs
         )
         self._expire_after = expire_after
 
@@ -136,7 +139,8 @@ class MongoHandler(logging.Handler):
         flush_level: str | int = logging.ERROR,
         buffer_size: int = 200,
         max_retries: int = 3,
-        expire_after: int = 1_209_600 # 14 days
+        expire_after: int = 1_209_600, # 14 days
+        **kwargs: Any
     ) -> None:
         self._kwargs = {
             "connection_url": connection_url,
@@ -147,6 +151,7 @@ class MongoHandler(logging.Handler):
             "max_retries": max_retries,
             "expire_after": expire_after
         }
+        self._kwargs.update(kwargs)
         self._flush_level = cast_logging_level(flush_level)
 
     def start_worker(self) -> LogWorker:

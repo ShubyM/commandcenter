@@ -3,7 +3,7 @@ import secrets
 from starlette.config import Config
 from starlette.datastructures import Secret
 
-from commandcenter.auth.backends import AuthBackends
+from commandcenter.auth import AuthBackends
 
 
 

@@ -1,4 +1,4 @@
-from commandcenter.config.memcached import (
+from commandcenter.api.config.memcached import (
     CC_MEMCACHED_CONNECT_TIMEOUT,
     CC_MEMCACHED_MAX_CONNECTIONS,
     CC_MEMCACHED_TIMEOUT,
@@ -8,7 +8,7 @@ from commandcenter.config.memcached import (
 
 
 def setup_memcached():
-    """Configure a Memcached client object from the environment."""
+    """Configure a Memcached client from the environment."""
     try:
         from pymemcache.client import PooledClient
     except ImportError:

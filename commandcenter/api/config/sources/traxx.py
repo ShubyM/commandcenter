@@ -3,7 +3,7 @@ import pathlib
 
 from starlette.config import Config
 
-from commandcenter.config import CC_HOME
+from commandcenter.api.config import CC_HOME
 from commandcenter.sources.traxx import TraxxClient
 
 

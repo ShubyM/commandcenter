@@ -47,7 +47,6 @@ async def get_timeseries(
         collection_name: The collection to query.
         start_time: Start time of query. This is inclusive.
         end_time: End time of query.
-        interval: The time interval (in seconds) between successive rows.
         scan_rate: A representative number of the data update frequency.
 
     Yields:

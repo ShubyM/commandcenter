@@ -8,7 +8,7 @@ from aiohttp.helpers import set_result
 from aiohttp.http import HttpProcessingError
 from aiohttp.log import client_logger
 
-from commandcenter.http.aiohttp.auth import AuthError, AuthFlow
+from commandcenter.util.http.aiohttp.auth import AuthError, AuthFlow
 
 
 
@@ -94,7 +94,7 @@ def auth_request(flow: AuthFlow) -> Type[ClientRequest]:
                         except StopAsyncIteration:
                             resp.release_on_read()
                             return resp
-                    except BaseException as e:
+                    except Exception as e:
                         await resp.close()
                         raise AuthError() from e
                     await resp.read()

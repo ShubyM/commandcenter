@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 import dateutil.parser
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, Query, Request, status
 
 from commandcenter.util import FileWriter, get_file_format_writer
 
@@ -19,10 +19,10 @@ def get_file_writer(request: Request) -> FileWriter:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
 
-def parse_timestamp(default_timedelta: timedelta | None = None):
+def parse_timestamp(query: Query, default_timedelta: timedelta | None = None):
     """Parse a str timestamp from a request."""
     default_timedelta = default_timedelta or timedelta(seconds=0)
-    def wrapper(time: str | None = None) -> datetime:
+    def wrapper(time: str | None = query) -> datetime:
         now = datetime.now()
         if not time:
             return now - default_timedelta

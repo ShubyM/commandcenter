@@ -8,7 +8,7 @@ from commandcenter.caching import iter_singletons, memo, singleton
 
 
 
-_LOGGER = logging.getLogger("commandcenter.services.lifespan")
+_LOGGER = logging.getLogger("commandcenter.api.lifespan")
 
 
 async def on_shutdown_cleanup() -> None:

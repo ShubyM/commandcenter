@@ -1,6 +1,6 @@
 
 
-from commandcenter.config.sentry import (
+from commandcenter.api.config.sentry import (
     SENTRY_DSN,
     SENTRY_ENABLED,
     SENTRY_ENVIRONMENT,

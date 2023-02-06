@@ -1,27 +1,29 @@
 import functools
 from typing import Type
 
-from commandcenter.auth import AuthBackends
-from commandcenter.auth.base import BaseAuthenticationBackend, TokenHandler
-from commandcenter.auth.protocols import AuthenticationClient
-from commandcenter.caching import singleton
-from commandcenter.config.auth import (
+from commandcenter.api.config.auth import (
     CC_AUTH_ALGORITHM,
     CC_AUTH_BACKEND,
     CC_AUTH_SECRET_KEY,
     CC_AUTH_TOKEN_EXPIRE
 )
+from commandcenter.auth import (
+    AuthBackends,
+    AuthenticationClient,
+    BaseAuthenticationBackend,
+    TokenHandler
+)
+from commandcenter.caching import singleton
 
 
 def inject_backend_dependencies(func) -> BaseAuthenticationBackend:
     """Wrapper around the auth backend setup that allows for dynamic configuration."""
     backend = CC_AUTH_BACKEND
     client = None
-    # We make everything **kwargs instead of *args because the objcache decorator
-    # can properly hash kwargs according to the argument name
-    inject_kwargs = {}
+    
+    hashable = {}
     if backend is AuthBackends.ACTIVE_DIRECTORY.cls:
-        from commandcenter.config.auth.backends.activedirectory import (
+        from commandcenter.api.config.auth.backends.activedirectory import (
             CC_AUTH_BACKENDS_AD_DOMAIN,
             CC_AUTH_BACKENDS_AD_HOSTS,
             CC_AUTH_BACKENDS_AD_MAXCONN,
@@ -32,7 +34,7 @@ def inject_backend_dependencies(func) -> BaseAuthenticationBackend:
         )
         from commandcenter.auth.backends.activedirectory import ActiveDirectoryClient
         client = ActiveDirectoryClient
-        inject_kwargs.update(
+        hashable.update(
             {
                 "domain": CC_AUTH_BACKENDS_AD_DOMAIN,
                 "hosts": list(CC_AUTH_BACKENDS_AD_HOSTS),
@@ -48,7 +50,7 @@ def inject_backend_dependencies(func) -> BaseAuthenticationBackend:
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        return func(backend, client, **inject_kwargs)
+        return func(backend, client, **hashable)
     
     return wrapper
 
@@ -60,7 +62,7 @@ def setup_auth_backend(
     client: Type[AuthenticationClient],
     **kwargs
 ) -> BaseAuthenticationBackend:
-    """Initialize auth client for backend and setup backend.
+    """Configure an authentication backend from the environment.
     
     This must be run in the same thread as the event loop.
     """

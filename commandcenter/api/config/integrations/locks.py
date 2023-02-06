@@ -1,6 +1,6 @@
 from starlette.config import Config
 
-from commandcenter.integrations.locks import Locks
+from commandcenter.integrations import Locks
 
 
 

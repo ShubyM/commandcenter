@@ -2,8 +2,8 @@ import pathlib
 
 from starlette.config import Config
 
-from commandcenter.caching.memo import caches
-from commandcenter.config import CC_HOME
+from commandcenter.api.config import CC_HOME
+from commandcenter.caching import Caches
 
 
 
@@ -17,6 +17,6 @@ CC_CACHE_DIR = config(
 )
 CC_CACHE_BACKEND = config(
     "CC_CACHE_BACKEND",
-    cast=lambda v: caches(v).cls,
-    default=caches.MEMORY.value
+    cast=lambda v: Caches(v).cls,
+    default=Caches.MEMORY.value
 )

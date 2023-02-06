@@ -1,7 +1,7 @@
 import functools
-from typing import Any, Callable, Dict, Type
+from typing import Any, Dict, Type
 
-from commandcenter.config.integrations.managers import (
+from commandcenter.api.config.integrations.managers import (
     CC_INTEGRATIONS_MANAGER,
     CC_INTEGRATIONS_MANAGER_INITIAL_BACKOFF,
     CC_INTEGRATIONS_MANAGER_MAX_BACKOFF,
@@ -10,14 +10,13 @@ from commandcenter.config.integrations.managers import (
     CC_INTEGRATIONS_MANAGER_SUBSCRIBER_MAXLEN,
     CC_INTEGRATIONS_MANAGER_TIMEOUT
 )
+from commandcenter.api.setup.integrations.locks import setup_lock
+from commandcenter.api.setup.rabbitmq import setup_rabbitmq
+from commandcenter.api.setup.redis import setup_redis
+from commandcenter.api.setup.sources import setup_client
 from commandcenter.caching import singleton
 from commandcenter.context import source_context
-from commandcenter.integrations.managers import Managers
-from commandcenter.integrations.protocols import Manager
-from commandcenter.setup.integrations.locks import setup_lock
-from commandcenter.setup.rabbitmq import setup_rabbitmq
-from commandcenter.setup.redis import setup_redis
-from commandcenter.setup.sources import setup_client
+from commandcenter.integrations import Manager, Managers
 
 
 
@@ -25,17 +24,17 @@ def inject_manager_dependencies(func) -> Manager:
     """Wrapper around the manager setup that allows for dynamic configuration."""
     manager = CC_INTEGRATIONS_MANAGER
     
-    inject_kwargs = {
+    hashable = {
         "max_subscribers": CC_INTEGRATIONS_MANAGER_MAX_SUBSCRIBERS,
         "maxlen": CC_INTEGRATIONS_MANAGER_SUBSCRIBER_MAXLEN,
     }
-    callables = {}
+    unhashable = {}
     requires_lock = False
     if manager is Managers.LOCAL.cls:
         pass
     elif manager is Managers.RABBITMQ.cls:
-        callables.update({"factory": functools.partial(setup_rabbitmq)})
-        inject_kwargs.update(
+        unhashable.update({"factory": setup_rabbitmq()})
+        hashable.update(
             {
                 "timeout": CC_INTEGRATIONS_MANAGER_TIMEOUT,
                 "max_backoff": CC_INTEGRATIONS_MANAGER_MAX_BACKOFF,
@@ -45,8 +44,8 @@ def inject_manager_dependencies(func) -> Manager:
         )
         requires_lock = True
     elif manager is Managers.REDIS.cls:
-        callables.update({"redis": functools.partial(setup_redis)})
-        inject_kwargs.update(
+        unhashable.update({"redis": setup_redis()})
+        hashable.update(
             {
                 "timeout": CC_INTEGRATIONS_MANAGER_TIMEOUT,
                 "max_backoff": CC_INTEGRATIONS_MANAGER_MAX_BACKOFF,
@@ -69,9 +68,9 @@ def inject_manager_dependencies(func) -> Manager:
         return func(
             manager,
             source,
-            callables,
             requires_lock,
-            **inject_kwargs
+            unhashable,
+            **hashable
         )
 
     return wrapper
@@ -82,15 +81,15 @@ def inject_manager_dependencies(func) -> Manager:
 def setup_manager(
     manager: Type[Manager],
     source: str,
-    _callables: Dict[str, Callable[[], Any]],
     requires_lock: bool,
+    _unhashable: Dict[str, Any],
     **kwargs
 ) -> Manager:
-    """Initialize manager from the runtime configuration.
+    """Configure a manager from the environment.
     
     This must be run in the same thread as the event loop.
     """
-    kwargs.update({k: v() for k, v in _callables.items()})
+    kwargs.update(_unhashable)
     client, subscriber, add_kwargs = setup_client(source, manager)
     kwargs.update(add_kwargs)
     if requires_lock:

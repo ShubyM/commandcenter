@@ -40,6 +40,20 @@ handlers:
         formatter: standard
         filters: [correlation_id, ip_address, username, host]
 
+    mongo:
+        class: commandcenter.logging.MongoHandler
+        connection_url: mongodb://localhost:27017/
+        database_name: commandcenter
+        collection_name: logs
+        flush_interval: 10
+        flush_level: ERROR
+        buffer_size: 200
+        max_retries: 3
+        expire_after: 1209600
+        serverSelectionTimeoutMS: 10000
+        connectTimeoutMS: 5000
+        timeoutMS: 10000
+
 loggers:
     commandcenter.core:
         level: INFO
@@ -61,4 +75,4 @@ loggers:
 # The root logger: any logger without propagation disabled sends to here as well
 root:
     level: WARNING
-    handlers: [rotate]
+    handlers: [mongo]

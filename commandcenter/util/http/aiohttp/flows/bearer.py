@@ -2,23 +2,22 @@ import hashlib
 import json
 from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Tuple
 
-from aiohttp import ClientRequest, ClientResponse, hdrs
+from aiohttp import ClientRequest, ClientResponse, ClientResponseError, hdrs
 from aiohttp.log import client_logger
 from aiohttp.connector import Connection
-from httpx import AsyncClient
-from starlette.datastructures import Secret
+from yarl import URL
 
 from commandcenter.util.http.aiohttp.auth import AuthFlow
 from commandcenter.util.http.oauth2 import (
+    GrantNotProvided,
+    InvalidGrantRequest,
     OAuthToken,
-    TokenMemoryCache,
+    TokenExpiryNotProvided,
     add_parameters,
     decode_base64,
     is_expired,
-    to_expiry,
-    request_new_grant_with_post
+    to_expiry
 )
 
 
@@ -54,7 +53,7 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthFlow):
     """
     def __init__(self, token_url: str, username: str, password: str, **kwargs):
         self.token_url = token_url
-        if not self.token_url:
+        if not token_url:
             raise ValueError("Token URL is mandatory.")
         self.username = username
         if not self.username:
@@ -106,31 +105,41 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthFlow):
                 return
             self.token = None
         
-        original_request = request
-        cookies = original_request.headers.get(hdrs.COOKIE)
-        if cookies:
-            new_headers = {hdrs.COOKIE: cookies}
-        else:
-            new_headers = None
+        # Save a reference to the components of the original request
+        original_headers = request.headers.copy()
+        original_cookies = original_headers.get(hdrs.COOKIE)
+        original_url = request.url
+        original_method = request.method
+        original_body = request.body
+        original_chunked = request.chunked
+        original_compress = request.compress
+        original_expect_100 = original_headers.get(hdrs.EXPECT)
+        if original_expect_100:
+            assert request._continue is not None
+            fut, request._continue = request._continue, None
+            fut.cancel()
 
-        new_request = ClientRequest(
-            method="POST",
-            url=self.token_url,
-            headers=new_headers,
-            data=self.data,
-            loop=original_request.loop,
-            proxy=original_request.proxy,
-            proxy_auth=original_request.proxy_auth,
-            session=original_request._session,
-            ssl=original_request._ssl,
-            proxy_headers=original_request.proxy_headers,
-            traces=original_request._traces
-        )
+        # Replace components with components of token request. This maintains
+        # any proxy configuration, ssl, etc.
+        url = URL(self.token_url).with_fragment(None)
+        request.headers.clear()
+        request.url = url
+        request.method = "POST"
+        request.update_host(url)
+        request.update_headers(None)
+        request.update_auto_headers(frozenset())
+        if original_cookies:
+            request.headers[hdrs.COOKIE] = original_cookies
+        request.update_content_encoding(self.data)
+        request.update_body_from_data(self.data)
+        request.update_transfer_encoding()
         
-        response = yield request
-        if not 200 <= response.status <= 299:
-            yield original_request
-            return
+        response = yield
+        try:
+            response.raise_for_status()
+        except ClientResponseError:
+            content = await response.json()
+            raise InvalidGrantRequest(content)
         
         content = await response.json()
 
@@ -155,5 +164,13 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthFlow):
         )
         self.token = OAuthToken(token=token, expiry=expiry)
 
-        original_request.headers[self.header_name] = self.header_value.format(token=token)
-        yield original_request
+        request.headers = original_headers
+        request.headers[self.header_name] = self.header_value.format(token=self.token.token)
+        request.url = original_url
+        request.method = original_method
+        request.body = original_body
+        request.chunked = original_chunked
+        request.compress = original_compress
+        request.update_expect_continue(True if original_expect_100 else False)
+
+        yield

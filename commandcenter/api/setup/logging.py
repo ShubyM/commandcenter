@@ -4,8 +4,8 @@ import pathlib
 
 import yaml
 
-from commandcenter.config import CC_DEBUG_MODE
-from commandcenter.config.logging import CC_LOGGING_CONFIG_PATH
+from commandcenter.api.config import CC_DEBUG_MODE
+from commandcenter.api.config.logging import CC_LOGGING_CONFIG_PATH
 
 
 

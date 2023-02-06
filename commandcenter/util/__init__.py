@@ -1,3 +1,10 @@
+from .backoff import (
+    ConstantBackoff,
+    DecorrelatedJitterBackoff,
+    EqualJitterBackoff,
+    ExponentialBackoff,
+    FullJitterBackoff,
+)
 from .config import (
     cast_logging_level,
     cast_path,
@@ -23,6 +30,19 @@ from .formatting import (
     snake_to_camel,
     snake_to_lower_camel,
 )
+from .http import (
+    AuthError,
+    AuthFlow,
+    create_auth_handlers,
+    AsyncOAuthPassword,
+    FileCookieAuthFlow,
+    NegotiateAuth,
+    GrantNotProvided,
+    InvalidGrantRequest,
+    InvalidToken,
+    OAuthError,
+    SyncOAuthPassword,
+)
 from .process import (
     NonZeroExitCode,
     run_subprocess,
@@ -46,6 +66,11 @@ from .time import (
 
 
 __all__ = [
+    "ConstantBackoff",
+    "DecorrelatedJitterBackoff",
+    "EqualJitterBackoff",
+    "ExponentialBackoff",
+    "FullJitterBackoff",
     "cast_logging_level",
     "cast_path",
     "MongoWorker",
@@ -61,6 +86,17 @@ __all__ = [
     "json_loads",
     "snake_to_camel",
     "snake_to_lower_camel",
+    "AuthError",
+    "AuthFlow",
+    "create_auth_handlers",
+    "AsyncOAuthPassword",
+    "FileCookieAuthFlow",
+    "NegotiateAuth",
+    "GrantNotProvided",
+    "InvalidGrantRequest",
+    "InvalidToken",
+    "OAuthError",
+    "SyncOAuthPassword",
     "NonZeroExitCode",
     "run_subprocess",
     "sse_handler",

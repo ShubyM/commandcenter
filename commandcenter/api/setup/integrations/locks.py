@@ -1,15 +1,14 @@
 import functools
-from typing import Any, Callable, Dict, Type
+from typing import Any, Dict, Type
 
-from commandcenter.config.integrations.locks import (
+from commandcenter.api.config.integrations.locks import (
     CC_INTEGRATIONS_LOCK,
     CC_INTEGRATIONS_LOCK_TTL
 )
+from commandcenter.api.setup.memcached import setup_memcached
+from commandcenter.api.setup.redis import setup_redis
 from commandcenter.caching import singleton
-from commandcenter.integrations.locks import Locks
-from commandcenter.integrations.protocols import Lock
-from commandcenter.setup.memcached import setup_memcached
-from commandcenter.setup.redis import setup_redis
+from commandcenter.integrations import Lock, Locks
 
 
 
@@ -17,22 +16,22 @@ def inject_lock_dependencies(func) -> Lock:
     """Wrapper around the manager setup that allows for dynamic configuration."""
     lock = CC_INTEGRATIONS_LOCK
     
-    inject_kwargs = {
+    hashable = {
         "ttl": CC_INTEGRATIONS_LOCK_TTL
     }
-    callables = {} # Use partials which are hashable in @singleton
+    unhashable = {}
     if lock is Locks.MEMCACHED.cls:
-        from commandcenter.config.memcached import CC_MEMCACHED_MAX_CONNECTIONS
-        inject_kwargs.update({"max_workers": CC_MEMCACHED_MAX_CONNECTIONS})
-        callables.update({"memcached": functools.partial(setup_memcached)})
+        from commandcenter.api.config.memcached import CC_MEMCACHED_MAX_CONNECTIONS
+        hashable.update({"max_workers": CC_MEMCACHED_MAX_CONNECTIONS})
+        unhashable.update({"memcached": setup_memcached()})
     elif lock is Locks.REDIS.cls:
-        callables.update({"redis": functools.partial(setup_redis)})
+        unhashable.update({"redis": setup_redis()})
     else:
         raise RuntimeError("Received invalid lock.")
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs) -> Lock:
-        return func(lock, callables, **inject_kwargs)
+        return func(lock, unhashable, **hashable)
 
     return wrapper
 
@@ -41,9 +40,12 @@ def inject_lock_dependencies(func) -> Lock:
 @singleton
 def setup_lock(
     lock: Type[Lock],
-    _callables: Dict[str, Callable[[], Any]],
+    _unhashable: Dict[str, Any],
     **kwargs
 ) -> Lock:
-    """Initialize lock from the runtime configuration."""
-    kwargs.update({k: v() for k, v in _callables.items()})
+    """Configure a lock from the environment.
+    
+    This must be run in the same thread as the event loop.
+    """
+    kwargs.update(_unhashable)
     return lock(**kwargs)

@@ -1,7 +1,7 @@
 from typing import List
 
+from commandcenter.api.setup.comm.telalert import setup_telalert_client
 from commandcenter.comm.providers.telalert import TelAlertClient, TelAlertMessage
-from commandcenter.setup.comm.telalert import setup_telalert_client
 
 
 

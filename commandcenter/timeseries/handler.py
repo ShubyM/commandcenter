@@ -1,6 +1,7 @@
 import logging
 import queue
 import sys
+import threading
 import warnings
 from datetime import datetime
 from typing import Any, Dict
@@ -29,7 +30,8 @@ class TimeseriesWorker(MongoWorker):
         flush_interval: int = 10,
         buffer_size: int = 200,
         max_retries: int = 3,
-        expire_after: int = 1_209_600 # 14 days
+        expire_after: int = 1_209_600, # 14 days
+        **kwargs: Any
     ) -> None:
         super().__init__(
             connection_url,
@@ -37,7 +39,8 @@ class TimeseriesWorker(MongoWorker):
             collection_name,
             flush_interval,
             buffer_size,
-            max_retries
+            max_retries,
+            **kwargs
         )
         self._expire_after = expire_after
 
@@ -144,7 +147,8 @@ class MongoTimeseriesHandler:
         flush_interval: int = 10,
         buffer_size: int = 200,
         max_retries: int = 3,
-        expire_after: int = 1_209_600 # 14 days
+        expire_after: int = 1_209_600, # 14 days
+        **kwargs: Any
     ) -> None:
         self._kwargs = {
             "connection_url": connection_url,
@@ -155,6 +159,8 @@ class MongoTimeseriesHandler:
             "max_retries": max_retries,
             "expire_after": expire_after
         }
+        self._kwargs.update(kwargs)
+        self._lock = threading.Lock()
 
     def start_worker(self) -> TimeseriesWorker:
         worker = TimeseriesWorker(**self._kwargs)
@@ -175,22 +181,24 @@ class MongoTimeseriesHandler:
             self.worker = worker
         return self.worker
 
-    @classmethod
-    def flush(cls, block: bool = False):
+    def flush(self, block: bool = False):
         """Tell the worker to send any currently enqueued samples.
         
         Blocks until enqueued samples are sent if `block` is set.
         """
-        if cls.worker is not None:
-            cls.worker.flush(block)
+        with self._lock:
+            if self.worker is not None:
+                self.worker.flush(block)
 
     def publish(self, sample: Dict[str, Any]):
         """Publish a sample to the worker."""
         sample["expire"] = datetime.utcnow()
-        self.get_worker().publish(sample)
+        with self._lock:
+            self.get_worker().publish(sample)
 
     def close(self) -> None:
         """Shuts down this handler and the flushes the worker."""
-        if self.worker is not None:
-            self.worker.flush()
-            self.worker.stop()
+        with self._lock:
+            if self.worker is not None:
+                self.worker.flush()
+                self.worker.stop()

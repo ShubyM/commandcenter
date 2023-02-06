@@ -8,7 +8,7 @@ import yaml
 from aiohttp import ClientRequest, ClientResponse
 from aiohttp.connector import Connection
 
-from commandcenter.http.aiohttp.auth import AuthFlow
+from commandcenter.util.http.aiohttp.auth import AuthFlow
 
 
 

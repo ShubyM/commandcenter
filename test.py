@@ -1,17 +1,36 @@
-from commandcenter.integrations import RedisManager
 
-from commandcenter.http.requests.bearer import OAuth2ResourceOwnerPasswordCredentials
+from commandcenter.util.http.requests.bearer import OAuth2ResourceOwnerPasswordCredentials
+from commandcenter.util.http.aiohttp.client_reqrep import create_auth_handlers
+from commandcenter.util.http.aiohttp.flows.bearer import OAuth2ResourceOwnerPasswordCredentials as OAuth2Password
 
 import requests
+from aiohttp import ClientSession
 
-# auth = OAuth2ResourceOwnerPasswordCredentials(
-#     "http://localhost:8000/token",
-#     username="johndoe",
-#     password="password"
-# )
-# response = requests.get("http://localhost:8000/users/me", auth=auth)
-# print(response.json())
-# response = requests.get("http://localhost:8000/users/me/items", auth=auth)
+
+def main():
+    auth = OAuth2ResourceOwnerPasswordCredentials(
+        "http://localhost:8000/token",
+        username="johndoe",
+        password="password"
+    )
+    response = requests.get("http://localhost:8000/users/me", auth=auth)
+    print(response.json())
+    response = requests.get("http://localhost:8000/users/me/items", auth=auth)
+
+async def a_main():
+    auth = OAuth2Password(
+        "http://localhost:8000/token",
+        username="johndoe",
+        password="password"
+    )
+    req, rep = create_auth_handlers(auth)
+    session = ClientSession(request_class=req, response_class=rep)
+    response = await session.get("http://localhost:8000/users/me/")
+    content = await response.json()
+    print(content)
+    response = await session.get("http://localhost:8000/users/me/items/")
+    await response.json()
+    await session.close()
 
 # import asyncio
 # import csv
@@ -63,8 +82,8 @@ import requests
 #             row = [timestamp.isoformat(), *data]
 #             writer.writerow(row)
 
-# if __name__ == "__main__":
-#     import logging
-#     logging.basicConfig(level=logging.DEBUG)
-#     insert_data()
-#     #asyncio.run(main())
+if __name__ == "__main__":
+    import logging
+    import asyncio
+    logging.basicConfig(level=logging.DEBUG)
+    asyncio.run(a_main())

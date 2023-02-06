@@ -1,6 +1,5 @@
-from commandcenter.auth.base import TokenHandler
-from commandcenter.auth.protocols import AuthenticationClient
-from commandcenter.setup.auth import setup_auth_backend
+from commandcenter.api.setup.auth import setup_auth_backend
+from commandcenter.auth import AuthenticationClient, TokenHandler
 
 
 

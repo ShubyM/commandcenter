@@ -7,7 +7,7 @@ from commandcenter.exceptions import NotConfigured
 def setup_telalert_client():
     """Setup TelAlert client from the runtime configuration."""
     from commandcenter.comm.providers.telalert import TelAlertClient
-    from commandcenter.config.comm.providers.telalert import (
+    from commandcenter.api.config.comm.providers.telalert import (
         CC_COMM_PROVIDERS_TELALERT_HOST,
         CC_COMM_PROVIDERS_TELALERT_MAX_CONCURRENCY,
         CC_COMM_PROVIDERS_TELALERT_PATH,

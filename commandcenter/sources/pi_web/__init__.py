@@ -1,10 +1,15 @@
-from .api import (
+from .data import (
     PIWebAPI,
     get_interpolated,
     get_recorded,
     search_points
 )
-from .client import PIWebClient
+from .exceptions import (
+    PIWebContentError,
+    PIWebIntegrationError,
+    PIWebResponseError
+)
+from .integration import PIWebClient, PIWebSubscriber
 from .models import (
     PIObjSearch,
     PIObjSearchFailed,
@@ -16,7 +21,6 @@ from .models import (
     PISubscriptionRequest,
     WebIdType
 )
-from .subscriber import PISubscriber
 
 
 
@@ -25,7 +29,11 @@ __all__ = [
     "get_interpolated",
     "get_recorded",
     "search_points",
+    "PIWebContentError",
+    "PIWebIntegrationError",
+    "PIWebResponseError",
     "PIWebClient",
+    "PIWebSubscriber",
     "PIObjSearch",
     "PIObjSearchFailed",
     "PIObjSearchRequest",
@@ -35,5 +43,4 @@ __all__ = [
     "PISubscription",
     "PISubscriptionRequest",
     "WebIdType",
-    "PISubscriber",
 ]

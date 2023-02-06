@@ -1,8 +1,8 @@
-from commandcenter.context import source_context
-from commandcenter.setup.sources import (
+from commandcenter.api.setup.sources import (
     setup_pi_http_client,
     setup_traxx_http_client
 )
+from commandcenter.context import source_context
 from commandcenter.sources import Sources
 from commandcenter.sources.pi_web import PIWebAPI
 from commandcenter.sources.traxx import TraxxAPI

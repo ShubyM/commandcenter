@@ -2,6 +2,7 @@ import atexit
 import logging
 import queue
 import threading
+from contextvars import Context
 from typing import Any, Dict, List
 
 from pymongo import MongoClient
@@ -23,14 +24,18 @@ class MongoWorker:
         collection_name: str | None = None,
         flush_interval: int = 10,
         buffer_size: int = 200,
-        max_retries: int = 3
+        max_retries: int = 3,
+        **kwargs: Any
     ) -> None:
+        kwargs.pop("maxPoolSize", None)
+
         self._connection_url = connection_url
         self._database_name = database_name or DATABASE_NAME
         self._collection_name = collection_name or self.default_collection_name()
         self._flush_interval = flush_interval
         self._buffer_size = buffer_size
         self._max_retries = max_retries
+        self._connection_args = kwargs
 
         self._runner = threading.Thread(target=self._run, daemon=True)
 
@@ -81,7 +86,7 @@ class MongoWorker:
         """Start the background thread."""
         with self._lock:
             if not self._started and not self._stopped:
-                self._runner.start()
+                Context().run(self._runner.start)
                 self._started = True
             elif self._stopped:
                 raise RuntimeError(
@@ -133,11 +138,11 @@ class MongoWorker:
             with MongoClient(
                 self._connection_url,
                 maxPoolSize=1,
-                serverSelectionTimeoutMS=10000
+                **self._connection_args
             ) as client:
                 pong = client.admin.command("ping")
                 if not pong.get("ok"):
-                    ConnectionFailure("Unable to ping server.")
+                    raise ConnectionFailure("Unable to ping server.")
                 self._running_event.set()
                 while not self._stop_event.is_set():
                     self._flush_event.wait(self._flush_interval)

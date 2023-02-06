@@ -1,4 +1,4 @@
-from commandcenter.config.redis import (
+from commandcenter.api.config.redis import (
     CC_REDIS_CONNECT_TIMEOUT,
     CC_REDIS_MAX_CONNECTIONS,
     CC_REDIS_TIMEOUT,
@@ -8,7 +8,7 @@ from commandcenter.config.redis import (
 
 
 def setup_redis(sync=False):
-    """Configure a Redis client object from the environment."""
+    """Configure a Redis client from the environment."""
     try:
         if sync:
             from redis import Redis
