@@ -1,3 +1,5 @@
+from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, Tuple
 
 import orjson
@@ -48,8 +50,25 @@ class TopicSubscription(Subscription):
 
 class Event(BaseModel):
     """An event to publish."""
+    topic: str
     routing_key: str
     payload: Dict[str, Any]
     
     def publish(self) -> Tuple[str, bytes]:
         return self.routing_key, orjson.dumps(self.payload)
+
+
+class EventSubscriberStatus(str, Enum):
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+
+
+class EventSubscriberInfo(BaseModel):
+    """Model for subscriber statistics."""
+    name: str
+    stopped: bool
+    status: EventSubscriberStatus
+    created: datetime
+    uptime: int
+    total_published_events: int
+    total_subscriptions: int

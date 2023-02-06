@@ -15,7 +15,6 @@ except ImportError:
 
 from commandcenter.eventbus.exceptions import (
     EventBusClosed,
-    EventBusConnectionError,
     EventBusSubscriptionLimitError,
     EventBusSubscriptionTimeout
 )
@@ -44,6 +43,8 @@ class EventBus:
             will be evicted as new messages are added.
         timeout: The time to wait for the broker service to be ready before
             rejecting the subscription request.
+        reconnect_timeout: The time to wait for the broker to reconnect before
+            dropping subscribers.
         max_backoff: The maximum backoff time in seconds to wait before trying
             to reconnect to the broker.
         initial_backoff: The minimum amount of time in seconds to wait before
@@ -91,6 +92,14 @@ class EventBus:
     def closed(self) -> bool:
         return self._runner is None or self._runner.done()
 
+    @property
+    def subscriptions(self) -> Set[TopicSubscription]:
+        subscriptions = set()
+        for fut, subscriber in self._subscribers.items():
+            if not fut.done():
+                subscriptions.update(subscriber.subscriptions)
+        return subscriptions
+
     def close(self) -> None:
         """Close the event bus."""
         fut, self._runner = self._runner, None
@@ -108,6 +117,27 @@ class EventBus:
                 self._publish_queue.task_done()
         except asyncio.QueueEmpty:
             pass
+
+    def publish(self, event: Event) -> bool:
+        """Publish an event to the bus.
+        
+        Args:
+            event: The event to publish.
+        
+        Returns:
+            bool: If `True` event will be published. If `False` publish queue
+                if full, event was not enqueued.
+        
+        Raises:
+            EventBusClosed: 
+        """
+        if self.closed:
+            raise EventBusClosed()
+        try:
+            self._publish_queue.put_nowait((1, event))
+            return True
+        except asyncio.QueueFull:
+            return False
 
     async def subscribe(self, subscriptions: Sequence[TopicSubscription]) -> EventSubscriber:
         """Subscribe to a sequence of topics on the event bus.
@@ -150,26 +180,6 @@ class EventBus:
         self._subscribers[fut] = subscriber
 
         return subscriber
-
-    def publish(self, event: Event) -> bool:
-        """Publish an event to the bus.
-        
-        Args:
-            event: The event to publish.
-        
-        Returns:
-            bool: If `True` event will be published. If `False` publish queue
-                if full, event was not enqueued.
-        
-        Raises:
-            EventBusClosed: 
-        """
-        if self.closed:
-            raise False
-        if self._publish_queue.full():
-            return False
-        self._publish_queue.put_nowait((1, event))
-        return True
 
     def _subscriber_lost(self, fut: asyncio.Future) -> None:
         """Callback after subscribers have stopped."""

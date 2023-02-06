@@ -12,9 +12,12 @@ try:
 except ImportError:
     pass
 
-from commandcenter.eventbus.models import TopicSubscription
+from commandcenter.eventbus.models import (
+    EventSubscriberInfo,
+    EventSubscriberStatus,
+    TopicSubscription
+)
 from commandcenter.integrations.models import SubscriberCodes
-from commandcenter.types import JSONContent
 
 
 
@@ -38,15 +41,22 @@ class EventSubscriber(AsyncIterable[bytes]):
         return self._data
 
     @property
-    def info(self) -> Dict[str, JSONContent]:
-        return SubscriberInfo(
+    def info(self) -> EventSubscriberInfo:
+        return EventSubscriberInfo(
             name=self.__class__.__name__,
             stopped=self.stopped,
+            status=self.status,
             created=self._created,
             uptime=(datetime.now() - self._created).total_seconds(),
             total_published_messages=self._total_published,
             total_subscriptions=len(self.subscriptions)
-        ).dict()
+        )
+
+    @property
+    def status(self) -> EventSubscriberStatus:
+        if self._publisher is not None and not self._publisher.done():
+            return EventSubscriberStatus.CONNECTED
+        return EventSubscriberStatus.DISCONNECTED
 
     @property
     def stopped(self) -> bool:
@@ -55,6 +65,10 @@ class EventSubscriber(AsyncIterable[bytes]):
     @property
     def subscriptions(self) -> Set[TopicSubscription]:
         return self._subscriptions
+
+    def set_publisher(self, publisher: asyncio.Task) -> None:
+        assert self._publisher is None or self._publisher.done()
+        self._publisher = publisher
 
     def stop(self, e: Exception | None) -> None:
         waiter, self._stop_waiter = self._stop_waiter, None
@@ -132,6 +146,23 @@ class EventSubscriber(AsyncIterable[bytes]):
         finally:
             if not channel.is_closed:
                 await channel.close()
+
+    async def __aiter__(self) -> AsyncIterable[bytes]:
+        if self.stopped:
+            return
+        while not self.stopped:
+            if not self._data:
+                code = await self.wait()
+                if code is SubscriberCodes.STOPPED:
+                    return
+            # Pop messages from the data queue until there are no messages
+            # left
+            while True:
+                try:
+                    yield self._data.popleft()
+                except IndexError:
+                    # Empty queue
+                    break
 
     def __enter__(self) -> "EventSubscriber":
         return self

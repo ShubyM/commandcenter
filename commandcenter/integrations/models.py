@@ -1,6 +1,6 @@
 import hashlib
 from datetime import datetime
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Any, Dict, List, Sequence, Set
 
 import orjson
@@ -141,6 +141,11 @@ class SubscriberCodes(IntEnum):
     DATA = 2
 
 
+class BackendStatus(str, Enum):
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+
+
 class ConnectionInfo(BaseModel):
     """Model for connection statistics."""
     name: str
@@ -163,7 +168,7 @@ class ClientInfo(BaseModel):
     active_subscriptions: int
     subscription_capacity: int
     total_connections_serviced: int
-    connection_info: List[Dict[str, str | ConnectionInfo]]
+    connection_info: List[ConnectionInfo | None]
 
 
 class SubscriberInfo(BaseModel):
@@ -187,4 +192,18 @@ class ManagerInfo(BaseModel):
     subscriber_capacity: int
     total_subscribers_serviced: int
     client_info: ClientInfo
-    subscriber_info: List[Dict[str, str | SubscriberInfo]]
+    subscriber_info: List[SubscriberInfo | None]
+
+
+class LockInfo(BaseModel):
+    name: str
+    backend: str
+    created: datetime
+    uptime: int
+
+
+class DistributedManagerInfo(ManagerInfo):
+    """Model for distributed manager statistics."""
+    broker: str
+    status: BackendStatus
+    lock: LockInfo

@@ -21,6 +21,7 @@ from commandcenter.integrations.exceptions import (
     SubscriptionTimeout
 )
 from commandcenter.integrations.models import (
+    BackendStatus,
     ClientInfo,
     ConnectionInfo,
     DroppedSubscriptions,
@@ -36,7 +37,6 @@ from commandcenter.integrations.protocols import (
     Manager,
     Subscriber
 )
-from commandcenter.types import JSONContent
 
 
 
@@ -67,11 +67,7 @@ class BaseClient(Client):
         raise NotImplementedError()
 
     @property
-    def info(self) -> Dict[str, JSONContent]:
-        connection_info = [
-            {"id": fut.get_name(), "info": connection.info}
-            for fut, connection in self._connections.items()
-        ]
+    def info(self) -> ClientInfo:
         return ClientInfo(
             name=self.__class__.__name__,
             closed=self.closed,
@@ -83,8 +79,8 @@ class BaseClient(Client):
             active_subscriptions=len(self.subscriptions),
             subscription_capacity=self.capacity,
             total_connections_serviced=self._connections_serviced,
-            connection_info=connection_info
-        ).dict()
+            connection_info=[connection.info for connection in self._connections.values()]
+        )
 
     @property
     def subscriptions(self) -> Set[Subscription]:
@@ -95,18 +91,13 @@ class BaseClient(Client):
         return subscriptions
 
     def clear(self) -> None:
-        try:
-            while True:
-                self._data.get_nowait()
-                self._data.task_done()
-        except asyncio.QueueEmpty:
-            pass
-        try:
-            while True:
-                self._dropped.get_nowait()
-                self._dropped.task_done()
-        except asyncio.QueueEmpty:
-            pass
+        for queue in (self._data, self._dropped):
+            try:
+                while True:
+                    queue.get_nowait()
+                    queue.task_done()
+            except asyncio.QueueEmpty:
+                pass
 
     async def close(self) -> None:
         raise NotImplementedError()
@@ -170,7 +161,7 @@ class BaseConnection(Connection):
         self._total_published = 0
 
     @property
-    def info(self) -> Dict[str, JSONContent]:
+    def info(self) -> ConnectionInfo:
         return ConnectionInfo(
             name=self.__class__.__name__,
             online=self.online,
@@ -178,7 +169,7 @@ class BaseConnection(Connection):
             uptime=(datetime.now() - self._created).total_seconds(),
             total_published_messages=self._total_published,
             total_subscriptions=len(self._subscriptions)
-        ).dict()
+        )
 
     @property
     def online(self) -> bool:
@@ -243,12 +234,7 @@ class BaseManager(Manager):
         raise NotImplementedError()
 
     @property
-    def info(self) -> Dict[str, JSONContent]:
-        client_info = self._client.info
-        subscriber_info = [
-            {"id": str(id(fut)), "info": subscriber.info}
-            for fut, subscriber in self._subscribers.items()
-        ]
+    def info(self) -> ManagerInfo:
         return ManagerInfo(
             name=self.__class__.__name__,
             closed=self.closed,
@@ -258,9 +244,9 @@ class BaseManager(Manager):
             active_subscriptions=len(self.subscriptions),
             subscriber_capacity=self._max_subscribers - len(self._subscribers),
             total_subscribers_serviced=self._subscribers_serviced,
-            client_info=client_info,
-            subscriber_info=subscriber_info
-        ).dict()
+            client_info=self._client.info,
+            subscriber_info=[subscriber.info for subscriber in self._subscribers.values()]
+        )
 
     @property
     def subscriptions(self) -> Set[Subscription]:
@@ -328,6 +314,12 @@ class BaseDistributedManager(BaseManager):
         self._timeout = timeout
 
         self._ready: asyncio.Event = asyncio.Event()
+
+    @property
+    def status(self) -> BackendStatus:
+        if self._ready.is_set():
+            return BackendStatus.CONNECTED
+        return BackendStatus.DISCONNECTED
 
     async def subscribe(
         self,
@@ -492,7 +484,7 @@ class BaseSubscriber(Subscriber):
         return self._data
 
     @property
-    def info(self) -> Dict[str, JSONContent]:
+    def info(self) -> SubscriberInfo:
         return SubscriberInfo(
             name=self.__class__.__name__,
             stopped=self.stopped,
@@ -500,7 +492,7 @@ class BaseSubscriber(Subscriber):
             uptime=(datetime.now() - self._created).total_seconds(),
             total_published_messages=self._total_published,
             total_subscriptions=len(self.subscriptions)
-        ).dict()
+        )
 
     @property
     def stopped(self) -> bool:

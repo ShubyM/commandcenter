@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from datetime import datetime
 from typing import List, Set
 
 import anyio
@@ -10,7 +11,7 @@ except ImportError:
     pass
 
 from commandcenter.integrations.base import BaseLock
-from commandcenter.integrations.models import Subscription
+from commandcenter.integrations.models import LockInfo, Subscription
 
 
 
@@ -64,6 +65,17 @@ class MemcachedLock(BaseLock):
         self._ttl = int(ttl/1000)
         self._id = uuid.uuid4().hex
         self._limiter = anyio.CapacityLimiter(max_workers)
+
+        self._created = datetime.now()
+
+    @property
+    def info(self) -> LockInfo:
+        return LockInfo(
+            name=self.__class__.__name__,
+            backend="memcached",
+            created=self._created,
+            uptime=(datetime.now() - self._created).total_seconds(),
+        )
 
     @property
     def ttl(self) -> float:

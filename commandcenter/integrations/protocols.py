@@ -1,14 +1,18 @@
 import asyncio
 from collections.abc import AsyncIterable, Sequence
 from types import TracebackType
-from typing import Any, Deque, Dict, Protocol, Set, Type
+from typing import Any, Deque, Protocol, Set, Type
 
 from commandcenter.integrations.models import (
+    ClientInfo,
+    ConnectionInfo,
     DroppedSubscriptions,
+    LockInfo,
+    ManagerInfo,
     SubscriberCodes,
+    SubscriberInfo,
     Subscription
 )
-from commandcenter.types import JSONContent
 
 
 
@@ -33,7 +37,7 @@ class Client(Protocol):
         ...
 
     @property
-    def info(self) -> Dict[str, JSONContent]:
+    def info(self) -> ClientInfo:
         """Returns current information on the client."""
         ...
 
@@ -84,7 +88,7 @@ class Client(Protocol):
 
 class Connection(Protocol):
     @property
-    def info(self) -> Dict[str, JSONContent]:
+    def info(self) -> ConnectionInfo:
         """Returns current information on the connection."""
         ...
 
@@ -143,8 +147,8 @@ class Manager(Protocol):
         ...
 
     @property
-    def info(self) -> Dict[str, JSONContent]:
-        """Returns current information on the connection."""
+    def info(self) -> ManagerInfo:
+        """Returns current information on the manager."""
         ...
         
 
@@ -183,8 +187,8 @@ class Subscriber(Protocol):
         ...
 
     @property
-    def info(self) -> Dict[str, JSONContent]:
-        """Returns current information on the connection."""
+    def info(self) -> SubscriberInfo:
+        """Returns current information on the subscriber."""
         ...
         
 
@@ -237,10 +241,10 @@ class Subscriber(Protocol):
 
 class Lock:
     @property
-    def info(self) -> Dict[str, JSONContent]:
-        """Returns current information on the connection."""
+    def info(self) -> LockInfo:
+        """Returns current information on the lock."""
         ...
-        
+
     @property
     def ttl(self) -> float:
         """The TTL used for locks in seconds."""

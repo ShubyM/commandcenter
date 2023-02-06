@@ -3,10 +3,12 @@ import json
 import logging
 import sys
 import traceback
-from datetime import datetime
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, List, Type
 
-from commandcenter.__version__ import __version__ as COMMANDCENTER_VERSION
+import pendulum
+
+from commandcenter.util import TIMEZONE
+from commandcenter.__version__ import __version__ as VERSION
 
 
 
@@ -34,7 +36,7 @@ def record_attribute(attribute: str) -> Any:
     return lambda r: getattr(r, attribute, None)
 
 
-def record_error_type(record: logging.LogRecord) -> Optional[Type[Exception]]:
+def record_error_type(record: logging.LogRecord) -> Type[Exception] | None:
     """Get the exc type from the traceback."""
     exc_info = record.exc_info
     if not exc_info:
@@ -49,7 +51,7 @@ def record_error_type(record: logging.LogRecord) -> Optional[Type[Exception]]:
     return None
 
 
-def record_error_message(record: logging.LogRecord) -> Optional[str]:
+def record_error_message(record: logging.LogRecord) -> str | None:
     """Get the exc message from the traceback."""
     exc_info = record.exc_info
     if not exc_info:
@@ -64,17 +66,17 @@ def record_error_message(record: logging.LogRecord) -> Optional[str]:
     return None
 
 
-def record_error_stack_trace(record: logging.LogRecord) -> Optional[str]:
+def record_error_stack_trace(record: logging.LogRecord) -> List[str] | None:
     """Obtain a formatted stack trace from the traceback."""
     # Using stack_info=True will add 'error.stack_trace' even
     # if the type is not 'error', exc_info=True only gathers
     # when there's an active exception.
     if record.exc_info and record.exc_info[2] is not None:
-        return "".join(traceback.format_tb(record.exc_info[2])) or None
+        return traceback.format_tb(record.exc_info[2]) or None
     # LogRecord only has 'stack_info' if it's passed via .log(..., stack_info=True)
     stack_info = getattr(record, "stack_info", None)
     if stack_info:
-        return str(stack_info)
+        return [str(stack_info)]
     return None
 
 
@@ -134,8 +136,10 @@ def json_dumps_fallback(value: Any) -> Any:
 
 
 EXTRACTORS = {
-    "timestamp": lambda r: datetime.fromtimestamp(r.created).isoformat(),
-    "api_version": lambda _: COMMANDCENTER_VERSION,
+    "timestamp": lambda r: pendulum.from_timestamp(
+        r.created, tz=TIMEZONE
+    ).in_timezone("UTC").replace(tzinfo=None).isoformat(),
+    "api_version": lambda _: VERSION,
     "context.correlation_id": record_attribute("correlation_id"),
     "context.user": record_attribute("user"),
     "context.ip_address": record_attribute("ip_address"),

@@ -5,22 +5,19 @@ import warnings
 from datetime import datetime
 from typing import Any, Dict
 
-import pymongo
 from pymongo import MongoClient
 from pymongo.collection import Collection
-from pymongo.errors import BulkWriteError, OperationFailure
+from pymongo.errors import OperationFailure
 
 from commandcenter.util import MongoWorker
 
 
 
-_LOGGER = logging.getLogger("commandcenter.timeseries")
+_LOGGER = logging.getLogger("commandcenter.eventbus")
 
 
-class TimeseriesWorker(MongoWorker):
-    """Manages the submission of timeseries samples to MongoDB in a background
-    thread.
-    """
+class EventWorker(MongoWorker):
+    """Manages the submission of events to MongoDB in a background thread."""
     def __init__(
         self,
         connection_url: str = "mongodb://localhost:27017",
@@ -43,7 +40,7 @@ class TimeseriesWorker(MongoWorker):
 
     @classmethod
     def default_collection_name(cls) -> str:
-        return "timeseries"
+        return "events"
 
     def send(self, client: MongoClient, exiting: bool = False) -> None:
         done = False
@@ -53,11 +50,7 @@ class TimeseriesWorker(MongoWorker):
         db = client[self._database_name]
         try:
             collection = Collection(db, self._collection_name)
-            collection.create_index(
-                [("timestamp", pymongo.ASCENDING), ("subscription", pymongo.ASCENDING)],
-                unique=True
-            )
-            collection.create_index("expire", expireAfterSeconds=self._expire_after)
+            collection.create_index("timestamp", expireAfterSeconds=self._expire_after)
         except OperationFailure:
             warnings.warn(
                 f"Attempted to set a different expiry for {self._collection_name} "
@@ -86,11 +79,6 @@ class TimeseriesWorker(MongoWorker):
                 self._pending_documents.clear()
                 self._pending_size = 0
                 self._retries = 0
-            except BulkWriteError:
-                # Duplicate timeseries samples
-                self._pending_documents.clear()
-                self._pending_size = 0
-                self._retries = 0
             except Exception:
                 # Attempt to send on the next call instead
                 done = True
@@ -103,9 +91,9 @@ class TimeseriesWorker(MongoWorker):
                 if exiting:
                     _LOGGER.info("The worker is stopping", extra=info)
                 elif self._retries > self._max_retries:
-                    _LOGGER.error("Dropping samples", extra=info)
+                    _LOGGER.error("Dropping events", extra=info)
                 else:
-                    _LOGGER.info("Resending samples attempt %i of %i",
+                    _LOGGER.info("Resending events attempt %i of %i",
                         self._retries,
                         self._max_retries,
                         extra=info
@@ -118,8 +106,8 @@ class TimeseriesWorker(MongoWorker):
                     self._retries = 0
 
 
-class MongoTimeseriesHandler:
-    """A handler that sends timeseries samples to MongoDB.
+class MongoEventHandler:
+    """A handler that sends events to MongoDB.
 
     Args:
         connection_url: Mongo DSN connection url.
@@ -134,7 +122,7 @@ class MongoTimeseriesHandler:
         expire_after: The value of the TTL index for samples. Defaults to having
             samples expire after 14 days.
     """
-    worker: TimeseriesWorker = None
+    worker: EventWorker = None
 
     def __init__(
         self,
@@ -156,14 +144,14 @@ class MongoTimeseriesHandler:
             "expire_after": expire_after
         }
 
-    def start_worker(self) -> TimeseriesWorker:
-        worker = TimeseriesWorker(**self._kwargs)
+    def start_worker(self) -> EventWorker:
+        worker = EventWorker(**self._kwargs)
         worker.start()
         worker.wait(timeout=5)
         if not worker.is_running:
             raise TimeoutError("Timed out waiting for worker.")
 
-    def get_worker(self) -> TimeseriesWorker:
+    def get_worker(self) -> EventWorker:
         if self.worker is None:
             worker = self.start_worker()
             self.worker = worker
@@ -177,17 +165,17 @@ class MongoTimeseriesHandler:
 
     @classmethod
     def flush(cls, block: bool = False):
-        """Tell the worker to send any currently enqueued samples.
+        """Tell the worker to send any currently enqueued events.
         
-        Blocks until enqueued samples are sent if `block` is set.
+        Blocks until enqueued events are sent if `block` is set.
         """
         if cls.worker is not None:
             cls.worker.flush(block)
 
-    def publish(self, sample: Dict[str, Any]):
-        """Publish a sample to the worker."""
-        sample["expire"] = datetime.utcnow()
-        self.get_worker().publish(sample)
+    def publish(self, event: Dict[str, Any]):
+        """Publish an event to the worker."""
+        event["timestamp"] = datetime.utcnow()
+        self.get_worker().publish(event)
 
     def close(self) -> None:
         """Shuts down this handler and the flushes the worker."""

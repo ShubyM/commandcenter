@@ -25,7 +25,3 @@ class EventBusSubscriptionLimitError(EventBusSubscriptionError):
 
 class EventBusSubscriptionTimeout(EventBusSubscriptionError):
     """Raised when the timeout limit to subscribe is reached."""
-
-
-class EventBusConnectionError(EventBusSubscriptionError):
-    """Raised if the broker connection closed before we could subscribe."""

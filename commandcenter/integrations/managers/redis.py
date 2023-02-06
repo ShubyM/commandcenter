@@ -2,6 +2,7 @@ import asyncio
 import logging
 from contextlib import suppress
 from contextvars import Context
+from datetime import datetime
 from typing import Type
 
 import anyio
@@ -15,6 +16,7 @@ except ImportError:
 
 from commandcenter.integrations.base import BaseLock, BaseDistributedManager
 from commandcenter.integrations.exceptions import ClientClosed
+from commandcenter.integrations.models import DistributedManagerInfo
 from commandcenter.integrations.protocols import Client, Subscriber
 from commandcenter.util import EqualJitterBackoff
 
@@ -80,6 +82,24 @@ class RedisManager(BaseDistributedManager):
     @property
     def closed(self) -> bool:
         return self._runner is None or self._runner.done()
+
+    @property
+    def info(self) -> DistributedManagerInfo:
+        return DistributedManagerInfo(
+            name=self.__class__.__name__,
+            closed=self.closed,
+            created=self._created,
+            uptime=(datetime.now() - self._created).total_seconds(),
+            active_subscribers=len(self._subscribers),
+            active_subscriptions=len(self.subscriptions),
+            subscriber_capacity=self._max_subscribers - len(self._subscribers),
+            total_subscribers_serviced=self._subscribers_serviced,
+            client_info=self._client.info,
+            subscriber_info=[subscriber.info for subscriber in self._subscribers.values()],
+            broker="redis",
+            status=self.status,
+            lock=self._lock.info
+        )
 
     async def close(self) -> None:
         fut = self._runner

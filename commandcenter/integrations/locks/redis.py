@@ -1,6 +1,7 @@
 import logging
 import re
 import uuid
+from datetime import datetime
 from typing import List, Set
 
 try:
@@ -10,7 +11,7 @@ except ImportError:
 
 from commandcenter.caching import memo
 from commandcenter.integrations.base import BaseLock
-from commandcenter.integrations.models import Subscription
+from commandcenter.integrations.models import LockInfo, Subscription
 
 
 
@@ -64,6 +65,17 @@ class RedisLock(BaseLock):
         self._redis = redis
         self._ttl = ttl
         self._id = uuid.uuid4().hex
+
+        self._created = datetime.now()
+
+    @property
+    def info(self) -> LockInfo:
+        return LockInfo(
+            name=self.__class__.__name__,
+            backend="redis",
+            created=self._created,
+            uptime=(datetime.now() - self._created).total_seconds(),
+        )
 
     @property
     def ttl(self) -> float:
