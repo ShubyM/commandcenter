@@ -140,7 +140,7 @@ async def recorded(
                 alias="start_time",
                 description="Start time for query. Defaults is -1h."
             ),
-            default_timedelta=None
+            default_timedelta=3600
         )
     ),
     end_time: datetime = Depends(
@@ -176,7 +176,7 @@ async def recorded(
     writer(["timestamp", *header])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"
-        f"{end_time.strftime('%Y%m%d%H%M%S')}-recorded.{suffix}"
+        f"{end_time.strftime('%Y%m%d%H%M%S')}-traxx.{suffix}"
     )
     return StreamingResponse(
         chunked_transfer(

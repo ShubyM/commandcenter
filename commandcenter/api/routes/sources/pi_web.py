@@ -211,7 +211,7 @@ async def interpolated(
                 alias="start_time",
                 description="Start time for query. Defaults is -1h."
             ),
-            default_timedelta=None
+            default_timedelta=3600
         )
     ),
     end_time: datetime = Depends(
@@ -252,7 +252,7 @@ async def interpolated(
     writer(["timestamp", *header])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"
-        f"{end_time.strftime('%Y%m%d%H%M%S')}-interpolated.{suffix}"
+        f"{end_time.strftime('%Y%m%d%H%M%S')}-pi-interpolated.{suffix}"
     )
     return StreamingResponse(
         chunked_transfer(
@@ -280,7 +280,7 @@ async def recorded(
                 alias="start_time",
                 description="Start time for query. Defaults is -1h."
             ),
-            default_timedelta=None
+            default_timedelta=3600
         )
     ),
     end_time: datetime = Depends(
@@ -323,7 +323,7 @@ async def recorded(
     writer(["timestamp", *header])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"
-        f"{end_time.strftime('%Y%m%d%H%M%S')}-recorded.{suffix}"
+        f"{end_time.strftime('%Y%m%d%H%M%S')}-pi-recorded.{suffix}"
     )
     return StreamingResponse(
         chunked_transfer(

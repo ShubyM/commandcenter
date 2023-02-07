@@ -3,6 +3,7 @@ import inspect
 from starlette.config import Config
 
 from commandcenter.events import EventBus, MongoEventHandler
+from commandcenter.__version__ import __title__ as DATABASE_NAME
 
 
 
@@ -73,4 +74,13 @@ CC_EVENTS_EXPIRE_AFTER = config(
     "CC_EVENTS_EXPIRE_AFTER",
     cast=int,
     default=handler_parameters["expire_after"].default
+)
+
+CC_TOPICS_DATABASE_NAME = config(
+    "CC_TOPICS_DATABASE_NAME",
+    default=DATABASE_NAME
+)
+CC_TOPICS_COLLECTION_NAME = config(
+    "CC_TOPICS_COLLECTION_NAME",
+    default="topics"
 )

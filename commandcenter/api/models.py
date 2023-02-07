@@ -10,5 +10,5 @@ class StatusOptions(str, Enum):
 
 
 class Status(BaseModel):
-    """Model for operation status responses."""
+    """Response model for operation status responses."""
     status: StatusOptions

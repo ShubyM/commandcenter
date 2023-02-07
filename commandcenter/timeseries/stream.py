@@ -3,7 +3,7 @@ from collections.abc import AsyncIterable
 from datetime import datetime
 from typing import Dict, List, Set
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 from commandcenter.integrations.models import Subscription
 from commandcenter.types import JSONPrimitive, TimeseriesRow
@@ -27,10 +27,8 @@ def format_timeseries_content(
 
 
 async def get_timeseries(
-    client: AsyncIOMotorClient,
+    collection: AsyncIOMotorCollection,
     subscriptions: Set[Subscription],
-    database_name: str,
-    collection_name: str,
     start_time: datetime,
     end_time: datetime | None = None,
     scan_rate: int = 5
@@ -41,7 +39,7 @@ async def get_timeseries(
     with the hash order.
 
     Args:
-        client: The motor client.
+        collection: The motor collection.
         subscriptions: The subscriptions to stream data for.
         database_name: The database to query.
         collection_name: The collection to query.
@@ -68,17 +66,15 @@ async def get_timeseries(
         request_chunk_size=request_chunk_size,
         scan_rate=scan_rate
     )
-    
-    collection = client[database_name][collection_name]
 
     for start_time, end_time in zip(start_times, end_times):
         dispatch = [
             collection.find(
-                {
+                filter={
                     "timestamp": {"$gte": start_time, "$lt": end_time},
                     "subscription": hash_
                 },
-                {"timestamp": 1, "value": 1, "_id": 0}
+                projection={"timestamp": 1, "value": 1, "_id": 0}
             ).sort("timestamp", 1).to_list(None) for hash_ in hashes
         ]
         contents = await asyncio.gather(*dispatch)

@@ -7,7 +7,13 @@ from .exceptions import (
     EventSubscriptionTimeout
 )
 from .handler import MongoEventHandler
-from .models import Event, EventSubscriberInfo, Topic, TopicSubscription
+from .models import (
+    Event,
+    EventSubscriberInfo,
+    Topic,
+    TopicQueryResult,
+    TopicSubscription
+)
 from .subscriber import EventSubscriber
 
 
@@ -23,6 +29,7 @@ __all__ = [
     "Event",
     "EventSubscriberInfo",
     "Topic",
+    "TopicQueryResult",
     "TopicSubscription",
     "EventSubscriber",
 ]

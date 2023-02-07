@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import orjson
 from jsonschema import SchemaError
@@ -29,6 +29,11 @@ class Topic(Tokenable):
     @property
     def token(self) -> ReferenceToken:
         return ReferenceToken(f"topic-{self.name}")
+
+
+class TopicQueryResult(BaseModel):
+    """Result set of topic query."""
+    items: List[str | None]
 
 
 class TopicSubscription(Subscription):

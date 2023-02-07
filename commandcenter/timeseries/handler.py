@@ -3,7 +3,7 @@ import queue
 import sys
 import threading
 import warnings
-from datetime import datetime
+from collections.abc import Iterable
 from typing import Any, Dict
 
 import pymongo
@@ -190,11 +190,12 @@ class MongoTimeseriesHandler:
             if self.worker is not None:
                 self.worker.flush(block)
 
-    def publish(self, sample: Dict[str, Any]):
+    def publish(self, samples: Iterable[Dict[str, Any]]):
         """Publish a sample to the worker."""
-        sample["expire"] = datetime.utcnow()
         with self._lock:
-            self.get_worker().publish(sample)
+            worker = self.get_worker()
+            for sample in samples:
+                worker.publish(sample)
 
     def close(self) -> None:
         """Shuts down this handler and the flushes the worker."""

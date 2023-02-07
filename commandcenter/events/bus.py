@@ -159,7 +159,7 @@ class EventBus:
             raise EventSubscriptionLimitError(self._max_subscribers)
         
         subscriptions = set(subscriptions)
-        connection = await self._wait_for_connection()
+        connection = await self._wait_for_connection(self._timeout)
         subscriber = EventSubscriber()
         
         publisher = self._loop.create_task(
@@ -205,9 +205,9 @@ class EventBus:
             fut.add_done_callback(self._background.discard)
             self._background.add(fut)
 
-    async def _wait_for_connection(self) -> "Connection":
+    async def _wait_for_connection(self, timeout: float) -> "Connection":
         try:
-            await asyncio.wait_for(self._ready.wait(), timeout=self._timeout)
+            await asyncio.wait_for(self._ready.wait(), timeout=timeout)
         except asyncio.TimeoutError as e:
             raise EventSubscriptionTimeout("Timed out waiting for broker connection.") from e
         else:
@@ -216,7 +216,7 @@ class EventBus:
 
     async def _reconnect_publisher(self, subscriber: EventSubscriber) -> None:
         try:
-            connection = await self._wait_for_connection()
+            connection = await self._wait_for_connection(self._reconnect_timeout)
         except EventSubscriptionTimeout as e:
             subscriber.stop(e)
         else:

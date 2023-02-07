@@ -1,155 +1,240 @@
 import logging
-from typing import Dict, List
+from datetime import datetime
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
-from fastapi.responses import JSONResponse
+import anyio
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, status
+from fastapi.responses import JSONResponse, StreamingResponse
+from motor.motor_asyncio import AsyncIOMotorCollection
 from sse_starlette import EventSourceResponse
 
 from commandcenter.api.config.scopes import (
-    CC_SCOPES_PIWEB_ACCESS,
-    CC_SCOPES_PIWEB_ALLOW_ANY,
-    CC_SCOPES_PIWEB_RAISE_ON_NONE,
-    CC_SCOPES_TRAXX_ACCESS,
-    CC_SCOPES_TRAXX_ALLOW_ANY,
-    CC_SCOPES_TRAXX_RAISE_ON_NONE
+    COMMANDCENTER_READ_ACCESS,
+    COMMANDCENTER_READ_ALLOW_ANY,
+    COMMANDCENTER_READ_RAISE_ON_NONE,
+    COMMANDCENTER_WRITE_ACCESS,
+    COMMANDCENTER_WRITE_ALLOW_ANY,
+    COMMANDCENTER_WRITE_RAISE_ON_NONE
 )
 from commandcenter.api.dependencies import (
-    get_cached_reference,
-    get_manager,
-    get_reference_token,
+    get_file_writer,
+    get_timeseries_collection,
+    get_timeseries_handler,
+    get_unitop,
+    get_unitop_and_authorize,
+    get_unitop_collection,
+    get_unitop_subscribers,
+    get_unitops,
+    parse_timestamp,
     requires
 )
-from commandcenter.caching.tokens import ReferenceToken
-from commandcenter.context import set_source
+from commandcenter.api.models import Status, StatusOptions
+from commandcenter.auth import BaseUser
 from commandcenter.integrations import (
     AnySubscriberMessage,
-    AnySubscriptionRequest,
-    BaseSubscriptionRequest,
-    Manager,
     Subscriber,
-    SubscriptionError,
     iter_subscribers
 )
-from commandcenter.sources import Sources
-from commandcenter.unitops import (
+from commandcenter.timeseries import (
+    MongoTimeseriesHandler,
+    TimeseriesSamples,
     UnitOp,
-    delete_unitop,
-    delete_unitops,
-    find_unitop,
-    find_unitops,
-    update_unitop
+    UnitOpQueryResult,
+    get_timeseries
 )
-from commandcenter.util import sse_handler, ws_handler
+from commandcenter.util import (
+    FileWriter,
+    chunked_transfer,
+    format_timeseries_rows,
+    sse_handler,
+    ws_handler
+)
 
 
 
 _LOGGER = logging.getLogger("commandcenter.api.unitop")
 
-router = APIRouter(prefix="/unitop", tags=["Unit Ops"])
+router = APIRouter(
+    prefix="/unitop",
+    dependencies=[
+        Depends(
+            requires(
+                scopes=COMMANDCENTER_READ_ACCESS,
+                any_=COMMANDCENTER_READ_ALLOW_ANY,
+                raise_on_no_scopes=COMMANDCENTER_READ_RAISE_ON_NONE
+            )
+        )
+    ],
+    tags=["Unit Ops"]
+)
 
 
-REQUIRES = {
-    Sources.PI_WEB_API: requires(
-        scopes=list(CC_SCOPES_PIWEB_ACCESS),
-        any_=CC_SCOPES_PIWEB_ALLOW_ANY,
-        raise_on_no_scopes=CC_SCOPES_PIWEB_RAISE_ON_NONE
-    ),
-    Sources.TRAXX: requires(
-        scopes=list(CC_SCOPES_TRAXX_ACCESS),
-        any_=CC_SCOPES_TRAXX_ALLOW_ANY,
-        raise_on_no_scopes=CC_SCOPES_TRAXX_RAISE_ON_NONE
+@router.get("/{unitop_id}", response_model=UnitOp)
+async def unitop(
+    unitop: UnitOp = Depends(get_unitop)
+) -> UnitOp:
+    """Retrieve a unitop record."""
+    return unitop
+
+
+@router.get("/search", response_model=UnitOpQueryResult)
+async def unitops(
+    unitops: UnitOpQueryResult = Depends(get_unitops)
+) -> UnitOpQueryResult:
+    """Retrieve a collection of unitop records."""
+    return unitops
+
+
+@router.post(
+    "/save",
+    response_model=Status,
+    dependencies=[
+        Depends(
+            requires(
+                scopes=COMMANDCENTER_WRITE_ACCESS,
+                any_=COMMANDCENTER_WRITE_ALLOW_ANY,
+                raise_on_no_scopes=COMMANDCENTER_WRITE_RAISE_ON_NONE
+            )
+        )
+    ]
+)
+async def save(
+    unitop: UnitOp,
+    collection: AsyncIOMotorCollection = Depends(get_unitop_collection)
+) -> Status:
+    """Save a unitop to the database."""
+    result = await collection.update_one(
+        {"unitop_id": unitop.unitop_id},
+        unitop.dict(),
+        upsert=True
     )
-}
+    if result.modified_count > 0 or result.matched_count > 0:
+        return Status(status=StatusOptions.OK)
+    return Status(status=StatusOptions.FAILED)
 
 
-async def get_subscribers(
-    subscriptions: AnySubscriptionRequest,
-    request: Request
-) -> List[Subscriber]:
-    """Get subscribers from different sources."""
-    groups = subscriptions.group()
-    managers: Dict[Sources, Manager] = {}
-    
-    for source in groups.keys():
-        # User must be authorized for subscriptions to all sources
-        await REQUIRES[source](request=request)
-        with set_source(source):
-            manager = await get_manager()
-            managers[source] = manager
-    
-            subscribers: List[Subscriber] = []
-    for source, subscriptions in groups.items():
-        manager = managers[source]
-        subscriber = await manager.subscribe(subscriptions)
-        subscribers.append(subscriber)
-    
-    return subscribers
-
-
-@router.post("/subscribe", response_model=ReferenceToken, dependencies=[Depends(requires())])
-async def subscribe(
-    token: ReferenceToken = Depends(
-        get_reference_token(AnySubscriptionRequest)
-    )
-) -> ReferenceToken:
-    """Generate a reference token to stream unit op data."""
-    return token
-
-
-@router.get("/stream/{token}", response_class=JSONResponse)
+@router.get("/stream/{unitop_id}", response_class=JSONResponse)
 async def stream(
-    request: Request,
-    subscriptions: AnySubscriptionRequest = Depends(get_cached_reference(BaseSubscriptionRequest)),
+    subscribers: List[Subscriber] = Depends(get_unitop_subscribers)
 ) -> AnySubscriberMessage:
-    """Submit a reference token to stream unit op data. This is an event sourcing
-    (SSE) endpoint.
-    """
-    subscribers = await get_subscribers(
-        subscriptions=subscriptions,
-        request=request
-    )
+    """Stream data for a unitop. This is an event sourcing (SSE) endpoint."""
     send = iter_subscribers(*subscribers)
     iterble = sse_handler(send, _LOGGER)
     return EventSourceResponse(iterble)
 
 
-@router.websocket("/stream/{token}/ws")
+@router.websocket("/stream/{unitop_id}/ws")
 async def stream_ws(
     websocket: WebSocket,
-    request: Request,
-    subscriptions: AnySubscriptionRequest = Depends(
-        get_cached_reference(
-            BaseSubscriptionRequest,
-            raise_on_miss=False
+    _: BaseUser = Depends(
+        requires(
+            scopes=COMMANDCENTER_READ_ACCESS,
+            any_=COMMANDCENTER_READ_ALLOW_ANY,
+            raise_on_no_scopes=COMMANDCENTER_READ_RAISE_ON_NONE
         )
     ),
+    subscribers: List[Subscriber] = Depends(get_unitop_subscribers)
 ) -> AnySubscriberMessage:
-    """Submit a reference token to stream unit op data over the websocket protocol."""
+    """Stream data for a unitop over the websocket protocol."""
     try:
-        if not subscriptions:
-            await websocket.close(code=1008, reason="Invalid token")
-            return
-        try:
-            subscribers = await get_subscribers(
-                subscriptions=subscriptions,
-                request=request
-            )
-        except HTTPException as e:
-            _LOGGER.info("Closing websocket due to failed dependency %r", e)
-            await websocket.close(code=1006, reason="Failed dependency")
-        except SubscriptionError:
-            _LOGGER.warning("Refused connection due to a subscription error", exc_info=True)
-            await websocket.close(code=1013)
-            return
-        except Exception:
-            _LOGGER.error("Refused connection due to server error", exc_info=True)
-            await websocket.close(code=1011)
-            return
-        else:
-            await websocket.accept()
+        await websocket.accept()
     except RuntimeError:
         # Websocket disconnected while we were subscribing
         for subscriber in subscribers: subscriber.stop()
         return
     send = iter_subscribers(*subscribers)
     await ws_handler(websocket, _LOGGER, None, send)
+
+
+@router.post(
+    "/samples/publish",
+    response_model=Status,
+    dependencies=[
+        Depends(
+            requires(
+                scopes=COMMANDCENTER_WRITE_ACCESS,
+                any_=COMMANDCENTER_WRITE_ALLOW_ANY,
+                raise_on_no_scopes=COMMANDCENTER_WRITE_RAISE_ON_NONE
+            )
+        )
+    ]
+)
+async def samples(
+    samples: TimeseriesSamples,
+    handler: MongoTimeseriesHandler = Depends(get_timeseries_handler)
+) -> Status:
+    """Send timeseries data to the API."""
+    try:
+        await anyio.to_thread.run_sync(handler.publish(samples))
+    except TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to process samples."
+        )
+    return Status(status=StatusOptions.OK)
+
+
+@router.get("samples/{unitop_id}", response_class=StreamingResponse)
+async def recorded(
+    collection: AsyncIOMotorCollection = Depends(get_timeseries_collection),
+    unitop: UnitOp = Depends(get_unitop_and_authorize),
+    file_writer: FileWriter = Depends(get_file_writer),
+    start_time: datetime = Depends(
+        parse_timestamp(
+            query=Query(
+                default=None,
+                alias="start_time",
+                description="Start time for query. Default is -1h."
+            ),
+            default_timedelta=3600
+        )
+    ),
+    end_time: datetime = Depends(
+        parse_timestamp(
+            query=Query(
+                default=None,
+                alias="end_time",
+                description="End time for query. Default is current time."
+            ),
+            default_timedelta=None
+        )
+    ),
+    scan_rate: int = Query(
+        default=5,
+        description="The update frequency of the data. Default is 5 seconds. You do "
+            "not need to know this value exactly. A representative number on the "
+            "correct order of magnitide is sufficient."
+    )
+) -> StreamingResponse:
+    """Download a batch of recorded data. Supports .csv, .jsonl, and .ndjson"""
+    send = get_timeseries(
+        collection=collection,
+        subscriptions=list(unitop.data_mapping.values()),
+        start_time=start_time,
+        end_time=end_time,
+        scan_rate=scan_rate
+    )
+
+    buffer, writer, suffix, media_type = (
+        file_writer.buffer, file_writer.writer, file_writer.buffer, file_writer.media_type
+    )
+    
+    header = [item[0] for item in sorted(unitop.data_mapping.items(), key=lambda x: x[1])]
+    chunk_size = min(int(100_0000/len(header), 5000))
+    writer(["timestamp", *header])
+    filename = (
+        f"{start_time.strftime('%Y%m%d%H%M%S')}-"
+        f"{end_time.strftime('%Y%m%d%H%M%S')}-{unitop.unitop_id}.{suffix}"
+    )
+    return StreamingResponse(
+        chunked_transfer(
+            send=send,
+            buffer=buffer,
+            writer=writer,
+            formatter=format_timeseries_rows,
+            logger=_LOGGER,
+            chunk_size=chunk_size
+        ),
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
