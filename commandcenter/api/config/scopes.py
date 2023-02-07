@@ -73,6 +73,18 @@ CC_SCOPES_ADMIN_ALLOW_ANY = config(
     default=False
 )
 
+CC_SCOPES_UNITOP_READ = config(
+    "CC_SCOPES_UNITOP_READ",
+    default=""
+)
+CC_SCOPES_UNITOP_WRITE = config(
+    "CC_SCOPES_UNITOP_WRITE",
+    default=""
+)
+CC_SCOPES_UNITOP_ACCESS = [scope for scope in (CC_SCOPES_UNITOP_READ, CC_SCOPES_UNITOP_WRITE) if scope]
+
+
+
 
 ADMIN_USER = BaseUser(
     username="admin",
@@ -86,7 +98,8 @@ ADMIN_USER = BaseUser(
             list(CC_SCOPES_ADMIN_ACCESS),
             list(CC_SCOPES_PIWEB_ACCESS),
             list(CC_SCOPES_TRAXX_ACCESS),
-            list(CC_SCOPES_TELALERT_ACCESS)
+            list(CC_SCOPES_TELALERT_ACCESS),
+            CC_SCOPES_UNITOP_ACCESS,
         )
     )
 )
