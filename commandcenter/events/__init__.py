@@ -9,10 +9,13 @@ from .exceptions import (
 from .handler import MongoEventHandler
 from .models import (
     Event,
+    EventDocument,
+    EventQueryResult,
     EventSubscriberInfo,
     Topic,
     TopicQueryResult,
-    TopicSubscription
+    TopicSubscription,
+    TopicSubscriptionRequest
 )
 from .subscriber import EventSubscriber
 
@@ -26,10 +29,13 @@ __all__ = [
     "EventSubscriptionLimitError",
     "EventSubscriptionTimeout",
     "MongoEventHandler",
+    "EventDocument",
+    "EventQueryResult",
     "Event",
     "EventSubscriberInfo",
     "Topic",
     "TopicQueryResult",
     "TopicSubscription",
+    "TopicSubscriptionRequest",
     "EventSubscriber",
 ]

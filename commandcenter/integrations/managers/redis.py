@@ -214,11 +214,13 @@ class RedisManager(BaseDistributedManager):
                 self._ready.clear()
                 with suppress(RedisError):
                     await redis.close(close_connection_pool=True)
+                _LOGGER.info("Exited manager because client is closed")
                 raise
             except (RedisError, anyio.ExceptionGroup):
                 self._ready.clear()
                 with suppress(RedisError):
                     await redis.close(close_connection_pool=True)
+                _LOGGER.warning("Error in manger", exc_info=True)
             
             sleep = backoff.compute(0)
             _LOGGER.warning(

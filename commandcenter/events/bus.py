@@ -7,6 +7,7 @@ from contextvars import Context
 from typing import Callable, Dict, Set
 
 import anyio
+from anyio.abc import TaskStatus
 try:
     from aiormq import Connection
     from pamqp.commands import Basic
@@ -211,7 +212,7 @@ class EventBus:
         except asyncio.TimeoutError as e:
             raise EventSubscriptionTimeout("Timed out waiting for broker connection.") from e
         else:
-            assert self._connection is not None and self._connection.is_opened
+            assert self._connection is not None and not self._connection.is_closed
             return self._connection
 
     async def _reconnect_publisher(self, subscriber: EventSubscriber) -> None:
@@ -231,14 +232,19 @@ class EventBus:
                 subscriber.set_publisher(publisher)
                 self._publishers[publisher] = subscriber
 
-    async def _publish_events(self, connection: "Connection") -> None:
+    async def _publish_events(
+        self,
+        connection: "Connection",
+        task_status: TaskStatus = anyio.TASK_STATUS_IGNORED
+    ) -> None:
         """Publish enqueued events to the broker."""
         exchange = self._exchange
         channel = await connection.channel(publisher_confirms=True)
         await channel.exchange_declare(exchange, exchange_type="topic")
-        
+        task_status.started()
+
         while True:
-            event = await self._publish_queue.get()
+            _, event = await self._publish_queue.get()
             self._publish_queue.task_done()
             routing_key, payload = event.publish()
             
@@ -290,13 +296,14 @@ class EventBus:
             try:
                 async with anyio.create_task_group() as tg:
                     await tg.start(self._publish_events, connection)
-                    tg.start_soon(lambda: connection.closing)
+                    await connection.closing
             except (Exception, anyio.ExceptionGroup):
                 self._ready.clear()
                 self._connection = None
                 for fut in self._publishers.keys(): fut.cancel()
                 with suppress(Exception):
                     await connection.close(timeout=2)
+                _LOGGER.warning("Error in event bus", exc_info=True)
                 
             sleep = backoff.compute(attempts)
             _LOGGER.warning(

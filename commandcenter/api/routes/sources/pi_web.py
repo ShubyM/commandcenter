@@ -244,11 +244,11 @@ async def interpolated(
     )
     
     buffer, writer, suffix, media_type = (
-        file_writer.buffer, file_writer.writer, file_writer.buffer, file_writer.media_type
+        file_writer.buffer, file_writer.writer, file_writer.suffix, file_writer.media_type
     )
     
     header = [subscription.name for subscription in sorted(subscriptions.subscriptions)]
-    chunk_size = min(int(100_0000/len(header), 5000))
+    chunk_size = min(int(100_0000/len(header)), 5000)
     writer(["timestamp", *header])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"
@@ -315,11 +315,11 @@ async def recorded(
     )
     
     buffer, writer, suffix, media_type = (
-        file_writer.buffer, file_writer.writer, file_writer.buffer, file_writer.media_type
+        file_writer.buffer, file_writer.writer, file_writer.suffix, file_writer.media_type
     )
     
     header = [subscription.name for subscription in sorted(subscriptions.subscriptions)]
-    chunk_size = min(int(100_0000/len(header), 5000))
+    chunk_size = min(int(100_0000/len(header)), 5000)
     writer(["timestamp", *header])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"

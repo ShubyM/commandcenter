@@ -19,9 +19,12 @@ def get_file_writer(request: Request) -> FileWriter:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
 
-def parse_timestamp(query: Query, default_timedelta: timedelta | None = None):
+def parse_timestamp(query: Query, default_timedelta: int | None = None):
     """Parse a str timestamp from a request."""
-    default_timedelta = default_timedelta or timedelta(seconds=0)
+    if default_timedelta is not None:
+        default_timedelta = timedelta(seconds=default_timedelta)
+    else:
+        default_timedelta = timedelta(seconds=0)
     def wrapper(time: str | None = query) -> datetime:
         now = datetime.now()
         if not time:

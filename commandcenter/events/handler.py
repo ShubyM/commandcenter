@@ -3,7 +3,6 @@ import queue
 import sys
 import threading
 import warnings
-from datetime import datetime
 from typing import Any, Dict
 
 from pymongo import MongoClient
@@ -156,6 +155,7 @@ class MongoEventHandler:
         worker.wait(timeout=5)
         if not worker.is_running:
             raise TimeoutError("Timed out waiting for worker.")
+        return worker
 
     def get_worker(self) -> EventWorker:
         if self.worker is None:
@@ -180,7 +180,6 @@ class MongoEventHandler:
 
     def publish(self, event: Dict[str, Any]):
         """Publish an event to the worker."""
-        event["timestamp"] = datetime.utcnow()
         with self._lock:
             self.get_worker().publish(event)
 

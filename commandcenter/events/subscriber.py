@@ -84,9 +84,9 @@ class EventSubscriber(Subscriber):
             _LOGGER.debug("%s stopping publisher", self.__class__.__name__)
             fut.cancel()
 
-    def publish(self, data: str | bytes) -> None:
+    def publish(self, data: bytes) -> None:
         assert self._data is not None
-        self._data.append(data)
+        self._data.append(data.decode())
         
         waiter, self._data_waiter = self._data_waiter, None
         if waiter is not None and not waiter.done():
@@ -144,11 +144,12 @@ class EventSubscriber(Subscriber):
             await asyncio.gather(*binds)
 
             await channel.basic_consume(declare_ok.queue, on_message, no_ack=True)
+            await asyncio.wait([channel.closing])
         finally:
             if not channel.is_closed:
                 await channel.close()
 
-    async def __aiter__(self) -> AsyncIterable[bytes]:
+    async def __aiter__(self) -> AsyncIterable[str]:
         if self.stopped:
             return
         while not self.stopped:

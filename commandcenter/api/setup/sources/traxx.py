@@ -61,8 +61,10 @@ def resolve_traxx_client_dependencies(
         "timezone": CC_TIMEZONE
     }
     add_kwargs = {}
-    if manager in (Managers.REDIS.cls, Managers.RABBITMQ.cls):
-        add_kwargs["channel_name"] = CC_SOURCES_TRAXX_CHANNEL_NAME
+    if manager is Managers.REDIS.cls:
+        add_kwargs["channel"] = CC_SOURCES_TRAXX_CHANNEL_NAME
+    elif manager is Managers.RABBITMQ.cls:
+        add_kwargs["exchange"] = CC_SOURCES_TRAXX_CHANNEL_NAME
 
     return TraxxClient, args, kwargs, add_kwargs
 

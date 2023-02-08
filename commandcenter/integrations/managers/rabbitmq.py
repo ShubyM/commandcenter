@@ -211,17 +211,18 @@ class RabbitMQManager(BaseDistributedManager):
                 async with anyio.create_task_group() as tg:
                     await tg.start(self._receive_messages, connection, exchange)
                     tg.start_soon(self._publish_messages, connection, exchange)
-                    tg.start_soon(lambda: connection.closing)
+                    await connection.closing
             except ClientClosed:
                 self._ready.clear()
                 with suppress(Exception):
                     await connection.close(timeout=2)
+                _LOGGER.info("Exited manager because client is closed")
                 raise
             except (Exception, anyio.ExceptionGroup):
                 self._ready.clear()
                 with suppress(Exception):
                     await connection.close(timeout=2)
-                pass
+                _LOGGER.warning("Error in manager", exc_info=True)
             
             sleep = backoff.compute(attempts)
             _LOGGER.warning(

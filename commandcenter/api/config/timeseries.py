@@ -13,31 +13,31 @@ handler_parameters = inspect.signature(MongoTimeseriesHandler).parameters
 
 CC_TIMESERIES_DATABASE_NAME = config(
     "CC_TIMESERIES_DATABASE_NAME",
-    default=handler_parameters["database_name"]
+    default=DATABASE_NAME
 )
 CC_TIMESERIES_COLLECTION_NAME = config(
     "CC_TIMESERIES_COLLECTION_NAME",
-    default=handler_parameters["collection_name"]
+    default="timeseries"
 )
 CC_TIMESERIES_FLUSH_INTERVAL = config(
     "CC_TIMESERIES_FLUSH_INTERVAL",
     cast=float,
-    default=handler_parameters["flush_interval"]
+    default=handler_parameters["flush_interval"].default
 )
 CC_TIMESERIES_BUFFER_SIZE = config(
     "CC_TIMESERIES_BUFFER_SIZE",
     cast=int,
-    default=handler_parameters["buffer_size"]
+    default=handler_parameters["buffer_size"].default
 )
 CC_TIMESERIES_MAX_RETRIES = config(
     "CC_TIMESERIES_MAX_RETRIES",
     cast=int,
-    default=handler_parameters["max_retries"]
+    default=handler_parameters["max_retries"].default
 )
 CC_TIMESERIES_EXPIRE_AFTER = config(
     "CC_TIMESERIES_EXPIRE_AFTER",
     cast=int,
-    default=handler_parameters["expire_after"]
+    default=handler_parameters["expire_after"].default
 )
 
 CC_UNITOPS_DATABASE_NAME = config(

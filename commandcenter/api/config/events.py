@@ -24,7 +24,7 @@ CC_EVENTS_BUS_MAX_SUBSCRIBERS = config(
 CC_EVENTS_BUS_SUBSCRIBER_MAXLEN = config(
     "CC_EVENTS_BUS_SUBSCRIBER_MAXLEN",
     cast=int,
-    default=bus_parameters["max_len"].default
+    default=bus_parameters["maxlen"].default
 )
 CC_EVENTS_BUS_TIMEOUT = config(
     "CC_EVENTS_BUS_TIMEOUT",
@@ -49,11 +49,11 @@ CC_EVENTS_BUS_INITIAL_BACKOFF = config(
 
 CC_EVENTS_DATABASE_NAME = config(
     "CC_EVENTS_DATABASE_NAME",
-    default=handler_parameters["database_name"].default
+    default=DATABASE_NAME
 )
 CC_EVENTS_COLLECTION_NAME = config(
     "CC_EVENTS_COLLECTION_NAME",
-    default=handler_parameters["collection_name"].default
+    default="events"
 )
 CC_EVENTS_FLUSH_INTERVAL = config(
     "CC_EVENTS_FLUSH_INTERVAL",

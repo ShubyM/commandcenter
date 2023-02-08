@@ -175,14 +175,14 @@ def set_memcached_client(memcached: Optional["Memcached"]) -> None:
                         stacklevel=2
                     )
             if memcached is None:
-                memo._memcached = Memcached(
+                memcached = Memcached(
                     ("localhost", 11211),
                     max_pool_size=4,
                     connect_timeout=5,
                     timeout=5
                 )
             
-            if not is_type(memo._memcached, "pymemcache.client.base.PooledClient"):
+            if not is_type(memcached, "pymemcache.client.base.PooledClient"):
                 raise TypeError(f"Expected PooledClient instance, got {type(memcached)}.")
 
             memo._memcached = memcached

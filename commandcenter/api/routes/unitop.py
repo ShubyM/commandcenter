@@ -69,7 +69,7 @@ router = APIRouter(
 )
 
 
-@router.get("/{unitop_id}", response_model=UnitOp)
+@router.get("/search/{unitop_id}", response_model=UnitOp)
 async def unitop(
     unitop: UnitOp = Depends(get_unitop)
 ) -> UnitOp:
@@ -103,12 +103,12 @@ async def save(
     collection: AsyncIOMotorCollection = Depends(get_unitop_collection)
 ) -> Status:
     """Save a unitop to the database."""
-    result = await collection.update_one(
+    result = await collection.replace_one(
         {"unitop_id": unitop.unitop_id},
         unitop.dict(),
         upsert=True
     )
-    if result.modified_count > 0 or result.matched_count > 0:
+    if result.modified_count > 0 or result.matched_count > 0 or result.upserted_id is not None:
         return Status(status=StatusOptions.OK)
     return Status(status=StatusOptions.FAILED)
 
@@ -216,11 +216,11 @@ async def recorded(
     )
 
     buffer, writer, suffix, media_type = (
-        file_writer.buffer, file_writer.writer, file_writer.buffer, file_writer.media_type
+        file_writer.buffer, file_writer.writer, file_writer.suffix, file_writer.media_type
     )
     
     header = [item[0] for item in sorted(unitop.data_mapping.items(), key=lambda x: x[1])]
-    chunk_size = min(int(100_0000/len(header), 5000))
+    chunk_size = min(int(100_0000/len(header)), 5000)
     writer(["timestamp", *header])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"

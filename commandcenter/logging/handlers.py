@@ -110,7 +110,7 @@ class LogWorker(MongoWorker):
                     self._retries = 0
 
 
-class MongoHandler(logging.Handler):
+class MongoLogHandler(logging.Handler):
     """A logging handler that sends logs to MongoDB.
 
     Args:
@@ -142,6 +142,7 @@ class MongoHandler(logging.Handler):
         expire_after: int = 1_209_600, # 14 days
         **kwargs: Any
     ) -> None:
+        super().__init__()
         self._kwargs = {
             "connection_url": connection_url,
             "database_name": database_name,
@@ -160,6 +161,7 @@ class MongoHandler(logging.Handler):
         worker.wait(timeout=5)
         if not worker.is_running:
             raise TimeoutError("Timed out waiting for worker.")
+        return worker
 
     def get_worker(self) -> LogWorker:
         if self.worker is None:

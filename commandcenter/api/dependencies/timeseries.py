@@ -63,11 +63,11 @@ async def get_unitops(
 ) -> UnitOpQueryResult:
     """Retrieve a list of unitops from a query."""
     try:
-        documents = await collection.find(q).to_list()
+        documents = await collection.find(q).to_list(None)
     except TypeError: # Invalid query
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid query.")
     if documents:
-        UnitOpQueryResult(items=documents)
+        return UnitOpQueryResult(items=documents)
     return UnitOpQueryResult(items=[])
 
 

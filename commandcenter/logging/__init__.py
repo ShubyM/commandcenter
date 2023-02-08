@@ -1,6 +1,6 @@
 from .filters import HostFilter, IPAddressFilter, UserFilter
 from .formatters import StandardFormatter
-from .handlers import MongoHandler
+from .handlers import MongoLogHandler
 
 
 
@@ -9,5 +9,5 @@ __all__ = [
     "IPAddressFilter",
     "UserFilter",
     "StandardFormatter",
-    "MongoHandler",
+    "MongoLogHandler",
 ]

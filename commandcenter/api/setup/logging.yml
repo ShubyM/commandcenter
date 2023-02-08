@@ -41,7 +41,7 @@ handlers:
         filters: [correlation_id, ip_address, username, host]
 
     mongo:
-        class: commandcenter.logging.MongoHandler
+        class: commandcenter.logging.MongoLogHandler
         connection_url: mongodb://localhost:27017/
         database_name: commandcenter
         collection_name: logs
@@ -75,4 +75,4 @@ loggers:
 # The root logger: any logger without propagation disabled sends to here as well
 root:
     level: WARNING
-    handlers: [mongo]
+    handlers: [rotate]

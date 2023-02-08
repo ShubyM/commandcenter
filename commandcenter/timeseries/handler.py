@@ -168,6 +168,7 @@ class MongoTimeseriesHandler:
         worker.wait(timeout=5)
         if not worker.is_running:
             raise TimeoutError("Timed out waiting for worker.")
+        return worker
 
     def get_worker(self) -> TimeseriesWorker:
         if self.worker is None:

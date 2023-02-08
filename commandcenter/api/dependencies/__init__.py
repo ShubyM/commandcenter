@@ -7,9 +7,12 @@ from .events import (
     get_event_bus,
     get_event_handler,
     get_events_collection,
+    get_last_event,
+    get_n_events,
     get_topic,
     get_topics_collection,
-    list_topics
+    list_topics,
+    validate_event
 )
 from .integrations import get_manager
 from .sources import get_pi_http_client, get_traxx_http_client, source
@@ -38,9 +41,12 @@ __all__ = [
     "get_event_bus",
     "get_event_handler",
     "get_events_collection",
+    "get_last_event",
+    "get_n_events",
     "get_topic",
     "get_topics_collection",
     "list_topics",
+    "validate_event",
     "get_manager",
     "get_pi_http_client",
     "get_traxx_http_client",

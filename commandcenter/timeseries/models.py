@@ -16,7 +16,7 @@ class TimeseriesDocument:
     subscription: int
     timestamp: datetime
     value: Any
-    expire: datetime = datetime.utcnow()
+    expire: datetime
 
 
 class TimeseriesSample(BaseModel):
@@ -30,7 +30,8 @@ class TimeseriesSample(BaseModel):
             TimeseriesDocument(
                 subscription=hash(self.subscription),
                 timestamp=self.timestamp,
-                value=self.value
+                value=self.value,
+                expire=datetime.utcnow()
             )
         )
 
