@@ -13,7 +13,8 @@ from commandcenter.api.setup.application import setup_application
 app = setup_application(
     title="commandcenter",
     description="The hub for real-time data integration.",
-    version="0.0.1"
+    version="0.0.1",
+    root_path="/api"
 )
 
 app.include_router(events_)
