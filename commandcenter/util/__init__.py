@@ -47,6 +47,10 @@ from .process import (
     NonZeroExitCode,
     run_subprocess,
 )
+from .status import (
+    Status,
+    StatusOptions,
+)
 from .streams import (
     sse_handler,
     ws_handler,
@@ -99,6 +103,8 @@ __all__ = [
     "SyncOAuthPassword",
     "NonZeroExitCode",
     "run_subprocess",
+    "Status",
+    "StatusOptions",
     "sse_handler",
     "ws_handler",
     "Timer",
