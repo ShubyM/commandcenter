@@ -294,6 +294,24 @@ class CCClient:
             params=params
         )
 
+    async def download_unitop_data_to_pandas(
+        self,
+        unitop: str,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        scan_rate: int = 5
+    ) -> None:
+        """Send a GET request to /unitop/samples/{unitop} and download the file
+        to CSV.
+        """
+        path = f"/unitop/samples/{unitop}"
+        params = QueryParams(start_time=start_time, end_time=end_time, scan_rate=scan_rate)
+        await self._download_to_pandas(
+            "GET",
+            path,
+            params=params
+        )
+
     async def _get(
         self,
         path: str,
