@@ -268,7 +268,12 @@ class ActiveDirectoryClient(AuthenticationClient):
             assert len(results) == 1
             
             result = results[0]
+
             scopes = set()
+
+            if "memberOf" not in result.keys():
+                return ActiveDirectoryUser(scopes=set(), **result) 
+
             for group in result["memberOf"]:
                 match = _CN_PATTERN.search(group)
                 if match is not None:

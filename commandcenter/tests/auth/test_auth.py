@@ -1,57 +1,36 @@
 import pytest
-from starlette.middleware import Middleware
 
 
-from fastapi import Depends
-
-
-from commandcenter.auth.debug import DebugAuthenticationMiddleware
+from commandcenter.auth.models import BaseUser
 from commandcenter.auth import AuthenticationClient
 from commandcenter.api.config.scopes import ADMIN_USER
 from commandcenter.api.setup.auth import setup_auth_backend
 
 
-from commandcenter.api.dependencies import (
-    get_auth_client
-)
 
 
+# @pytest.fixture
+# async def auth_client():
+#     return setup_auth_backend().client
 
-
-from fastapi.testclient import TestClient
-from fastapi import FastAPI
 
 @pytest.mark.asyncio
-async def test_always_pass(test_client_factory):
-    DebugAuthenticationMiddleware.set_user(ADMIN_USER)
-    app: FastAPI = FastAPI(middleware=[Middleware(DebugAuthenticationMiddleware, backend=setup_auth_backend())])
+async def test_authentication_client_get_user():
+    # might be able to make backend a fixture
+
+    client: AuthenticationClient = setup_auth_backend().client
+    admin_information: BaseUser = await client.get_user(ADMIN_USER.username)
+    # consider adding some test user into the LDAP client
+    assert admin_information.username == "ADMIN"
 
 
-
-
-
-    @app.post("/")
-    async def auth(client: AuthenticationClient = Depends(get_auth_client)):
-        # response = await client.authenticate("MISHRSX29", "")
-        response = await client.get_user("MISHRSX29")
-        return {"client": response}
-
-    # create a client for the app using fixure
-    client: TestClient = test_client_factory(app)
-
-
-    # call an endpoint
-    response = client.post("/")
-    print(response.content)
-    # sanity check
-    assert response.status_code == 200
-
+@pytest.mark.asyncio
+async def test_authentication_client_authenticate():
+    client: AuthenticationClient = setup_auth_backend().client
+    # call the the authenticate method with some test username and password
+    res = await client.authenticate("NOT A USERNAME", "NOT A PASSWORD")
+    assert res == False
     
-
-
-
-
-
 
 
 
