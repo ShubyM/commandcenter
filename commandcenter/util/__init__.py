@@ -52,6 +52,8 @@ from .status import (
     StatusOptions,
 )
 from .streams import (
+    SSE,
+    SSEParser,
     sse_handler,
     ws_handler,
 )
@@ -105,6 +107,8 @@ __all__ = [
     "run_subprocess",
     "Status",
     "StatusOptions",
+    "SSE",
+    "SSEParser",
     "sse_handler",
     "ws_handler",
     "Timer",

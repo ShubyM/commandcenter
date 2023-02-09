@@ -130,8 +130,8 @@ class AnySubscriptionRequest(BaseSubscriptionRequest):
 
 
 class AnySubscriberMessage(BaseModel):
-    """Unconstrained subscriber message. Used primarily for OpenAPI schema"""
-    subscription: BaseSubscription
+    """Unconstrained subscriber message."""
+    subscription: AnySubscription
     items: List[Any]
 
 
