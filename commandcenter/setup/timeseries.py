@@ -1,4 +1,4 @@
-from commandcenter.api.config.mongo import (
+from commandcenter.config.mongo import (
     CC_MONGO_APPNAME,
     CC_MONGO_CONNECT_TIMEOUT,
     CC_MONGO_HEARTBEAT,
@@ -7,7 +7,7 @@ from commandcenter.api.config.mongo import (
     CC_MONGO_TIMEOUT,
     CC_MONGO_URL
 )
-from commandcenter.api.config.timeseries import (
+from commandcenter.config.timeseries import (
     CC_TIMESERIES_BUFFER_SIZE,
     CC_TIMESERIES_COLLECTION_NAME,
     CC_TIMESERIES_DATABASE_NAME,
@@ -21,7 +21,7 @@ from commandcenter.timeseries import MongoTimeseriesHandler
 
 
 @singleton
-def setup_timeseries_handler() -> MongoTimeseriesHandler:
+def configure_timeseries_handler() -> MongoTimeseriesHandler:
     """Configure a timeseries handler from the environment."""
     return MongoTimeseriesHandler(
         connection_url=CC_MONGO_URL,

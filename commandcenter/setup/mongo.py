@@ -1,6 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from commandcenter.api.config.mongo import (
+from commandcenter.config.mongo import (
     CC_MONGO_APPNAME,
     CC_MONGO_CONNECT_TIMEOUT,
     CC_MONGO_HEARTBEAT,
@@ -12,7 +12,7 @@ from commandcenter.api.config.mongo import (
 
 
 
-def setup_mongo():
+def configure_mongo():
     """Configure an async MongoDB client from the environment."""
     return AsyncIOMotorClient(
         CC_MONGO_URL,

@@ -5,25 +5,25 @@ from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
-from commandcenter.api.config import CC_DEBUG_MODE
-from commandcenter.api.config.middleware import (
+from commandcenter.config import CC_DEBUG_MODE
+from commandcenter.config.middleware import (
     CC_MIDDLEWARE_CORS_ORIGINS,
     CC_MIDDLEWARE_ENABLE_CONTEXT,
     CC_MIDDLEWARE_ENABLE_CORS
 )
-from commandcenter.api.config.scopes import ADMIN_USER
+from commandcenter.config.scopes import ADMIN_USER
 from commandcenter.middleware import (
     CorrelationIDMiddleware,
     IPAddressMiddleware,
     UserMiddleware
 )
-from commandcenter.api.setup.auth import setup_auth_backend
+from commandcenter.setup.auth import setup_auth_backend
 from commandcenter.auth import on_error
 from commandcenter.auth.debug import DebugAuthenticationMiddleware
 
 
 
-def setup_auth_middleware(stack: List[Middleware]) -> None:
+def configure_auth_middleware(stack: List[Middleware]) -> None:
     """Configure authentication middleware and add to the stack.
     
     This must be run in the same thread as the event loop.
@@ -43,14 +43,14 @@ def setup_auth_middleware(stack: List[Middleware]) -> None:
     stack.append(Middleware(partial))
 
 
-def setup_context_middleware(stack: List[Middleware]) -> None:
+def configure_context_middleware(stack: List[Middleware]) -> None:
     """Add context middleware to the stack."""
     stack.append(Middleware(CorrelationIDMiddleware))
     stack.append(Middleware(IPAddressMiddleware))
     stack.append(Middleware(UserMiddleware))
 
 
-def setup_cors_middleware(stack: List[Middleware]) -> None:
+def configure_cors_middleware(stack: List[Middleware]) -> None:
     """Add CORS middlware to the stack."""
     origins = list(CC_MIDDLEWARE_CORS_ORIGINS) or ["*"]
     stack.append(
@@ -64,12 +64,12 @@ def setup_cors_middleware(stack: List[Middleware]) -> None:
         )
 
 
-def setup_middleware() -> List[Middleware]:
-    """Configure a FastAPI application instance with the enabled middleware."""
+def configure_middleware() -> List[Middleware]:
+    """Return the default middleware stack."""
     stack = []
     if CC_MIDDLEWARE_ENABLE_CORS:
-        setup_cors_middleware(stack=stack)
-    setup_auth_middleware(stack=stack)
+        configure_cors_middleware(stack=stack)
+    configure_auth_middleware(stack=stack)
     if CC_MIDDLEWARE_ENABLE_CONTEXT:
-        setup_context_middleware(stack=stack)
+        configure_context_middleware(stack=stack)
     return stack

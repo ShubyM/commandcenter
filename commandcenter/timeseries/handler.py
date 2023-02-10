@@ -4,13 +4,15 @@ import sys
 import threading
 import warnings
 from collections.abc import Iterable
-from typing import Any, Dict
+from dataclasses import asdict
+from typing import Any
 
 import pymongo
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import BulkWriteError, OperationFailure
 
+from commandcenter.timeseries.models import TimeseriesDocument
 from commandcenter.util import MongoWorker
 
 
@@ -30,7 +32,7 @@ class TimeseriesWorker(MongoWorker):
         flush_interval: int = 10,
         buffer_size: int = 200,
         max_retries: int = 3,
-        expire_after: int = 1_209_600, # 14 days
+        expire_after: int = 2_592_000, # 14 days
         **kwargs: Any
     ) -> None:
         super().__init__(
@@ -83,14 +85,14 @@ class TimeseriesWorker(MongoWorker):
 
             if not self._pending_documents:
                 continue
-
+            
             try:
-                collection.insert_many(self._pending_documents, ordered=False)
-                self._pending_documents.clear()
-                self._pending_size = 0
-                self._retries = 0
-            except BulkWriteError:
-                # Duplicate timeseries samples
+                try:
+                    collection.insert_many(self._pending_documents, ordered=False)
+                except BulkWriteError as e:
+                    codes = [detail.get("code") == 11000 for detail in e.details.get("writeErrors", [])]
+                    if codes and not all(codes):
+                        raise e
                 self._pending_documents.clear()
                 self._pending_size = 0
                 self._retries = 0
@@ -163,6 +165,7 @@ class MongoTimeseriesHandler:
         self._lock = threading.Lock()
 
     def start_worker(self) -> TimeseriesWorker:
+        """Start the timeseries worker thread."""
         worker = TimeseriesWorker(**self._kwargs)
         worker.start()
         worker.wait(timeout=5)
@@ -171,6 +174,9 @@ class MongoTimeseriesHandler:
         return worker
 
     def get_worker(self) -> TimeseriesWorker:
+        """Get a timeseries worker. If a worker does not exist or the worker
+        is not running, a new worker is started.
+        """
         if self.worker is None:
             worker = self.start_worker()
             self.worker = worker
@@ -191,12 +197,12 @@ class MongoTimeseriesHandler:
             if self.worker is not None:
                 self.worker.flush(block)
 
-    def publish(self, samples: Iterable[Dict[str, Any]]):
+    def publish(self, samples: Iterable[TimeseriesDocument]):
         """Publish a sample to the worker."""
         with self._lock:
             worker = self.get_worker()
             for sample in samples:
-                worker.publish(sample)
+                worker.publish(asdict(sample))
 
     def close(self) -> None:
         """Shuts down this handler and the flushes the worker."""

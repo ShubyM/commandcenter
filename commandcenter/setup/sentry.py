@@ -1,6 +1,6 @@
 
 
-from commandcenter.api.config.sentry import (
+from commandcenter.config.sentry import (
     SENTRY_DSN,
     SENTRY_ENABLED,
     SENTRY_ENVIRONMENT,
@@ -15,8 +15,8 @@ from commandcenter.api.config.sentry import (
 
 
 
-def setup_sentry() -> None:
-    """Sets up sentry SDK for application."""
+def configure_sentry() -> None:
+    """Configure sentry SDK integrations from the environment."""
     try:
         import sentry_sdk
     except ImportError:
@@ -27,6 +27,7 @@ def setup_sentry() -> None:
     integrations = []
     from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.logging import LoggingIntegration, ignore_logger
+    from sentry_sdk.integrations.pymongo import PyMongoIntegration
     from sentry_sdk.integrations.starlette import StarletteIntegration
     
     integrations.extend(
@@ -36,6 +37,7 @@ def setup_sentry() -> None:
                 level=SENTRY_LOGGING_LEVEL,
                 event_level=SENTRY_EVENT_LEVEL
             ),
+            PyMongoIntegration(),
             StarletteIntegration()
         ]
     )

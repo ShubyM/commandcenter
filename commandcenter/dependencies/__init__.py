@@ -1,5 +1,5 @@
 from commandcenter.auth import requires
-from .auth import enable_interactive_auth, get_auth_client, get_token_handler
+from .auth import get_auth_client, get_token_handler
 from .caching import get_cached_reference, get_reference_token
 from .comm import get_telalert_client, telalert_message
 from .db import get_database_connection
@@ -31,7 +31,6 @@ from .util import get_file_writer, parse_timestamp
 
 __all__ = [
     "requires",
-    "enable_interactive_auth",
     "get_auth_client",
     "get_token_handler",
     "get_cached_reference",
