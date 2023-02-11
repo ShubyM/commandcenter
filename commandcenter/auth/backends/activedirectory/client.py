@@ -64,6 +64,7 @@ def get_root_dse(
         password=password
     )
     root_dse = client.get_rootDSE()
+
     return root_dse["namingContexts"][0]
 
 
@@ -263,7 +264,7 @@ class ActiveDirectoryClient(AuthenticationClient):
             results = await anyio.to_thread.run_sync(partial, limiter=self._limiter)
             
             if len(results) < 1:
-                raise UserNotFound()
+                raise UserNotFound(username=username)
             # sAMAccount name must be unique
             assert len(results) == 1
             
