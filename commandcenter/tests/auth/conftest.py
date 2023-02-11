@@ -24,8 +24,8 @@ def ldap_server(xprocess):
             "universal_newlines": True,
         }
 
-        config = os.path.abspath("ldap-server-mock-conf.json")
-        db = os.path.abspath('users.json')
+        config = os.path.abspath("config/ldap-server-mock-conf.json")
+        db = os.path.abspath('config/users.json')
         
         args = ['npx', 'ldap-server-mock', f'--conf={config}', f'--database={db}']
 
