@@ -43,6 +43,7 @@ def get_client(
         password=password,
         realm=domain
     )
+
     return client
 
 
@@ -263,9 +264,9 @@ class ActiveDirectoryClient(AuthenticationClient):
             )
             results = await anyio.to_thread.run_sync(partial, limiter=self._limiter)
             
+            # need to pass in the username for the exception to work
             if len(results) < 1:
                 raise UserNotFound(username=username)
-            # sAMAccount name must be unique
             assert len(results) == 1
             
             result = results[0]

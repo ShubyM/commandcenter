@@ -1,0 +1,25 @@
+[
+  {
+    "dn": "dc=test",
+    "attributes": {
+      "namingContexts":""
+    }
+  },
+  {
+    "dn": "uid=admin,ou=People,dc=test",
+    "attributes": {
+        "cn": "admin",
+        "givenName": "Shuby",
+        "sn": "Mishra", 
+        "mail": "shubymishra20@gmail.com",
+        "employeeNumber": "12345678", 
+        "company": "abbvie",
+        "c": "USA",
+        "objectCategory": "user",
+        "objectClass": "",
+        "sAMAccountName": "admin",
+        "namingContexts": "dc=test",
+        "userPassword": "admin"
+    }
+  }
+]
