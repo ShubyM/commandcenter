@@ -1,13 +1,25 @@
 import pytest
 
-
 from functools import partial
 
 from commandcenter.auth.models import BaseUser
+from commandcenter.auth.models import TokenHandler
 
 from commandcenter.auth.backends.activedirectory import ActiveDirectoryBackend
 from commandcenter.auth.backends.activedirectory import ActiveDirectoryClient
 
+from commandcenter.api.config.auth import (
+    CC_AUTH_ALGORITHM,
+    CC_AUTH_SECRET_KEY,
+    CC_AUTH_TOKEN_EXPIRE
+)
+
+from fastapi import FastAPI 
+
+from starlette.responses import JSONResponse
+from starlette.middleware import Middleware
+from starlette.authentication import requires
+from starlette.middleware.authentication import AuthenticationMiddleware
 
 
 @pytest.fixture
@@ -43,10 +55,43 @@ async def test_authentication_client_authenticate(auth_client: partial[ActiveDir
 
 # add test with our enviorment variabels used
 
-async def test_authentication_backend_authenticate(test_client_factory, ldap_server):
-    backend: ActiveDirectoryBackend = ActiveDirectoryBackend(
+@pytest.mark.asyncio
+async def test_authentication_backend_ad(auth_client, test_client_factory, ldap_server):
+    # takes in handler and client
 
+    client: ActiveDirectoryClient = auth_client()
+
+    handler: TokenHandler = TokenHandler(
+        key=str(CC_AUTH_SECRET_KEY),
+        expire=CC_AUTH_TOKEN_EXPIRE,
+        algorithm=CC_AUTH_ALGORITHM
     )
+
+    backend: ActiveDirectoryBackend = ActiveDirectoryBackend(
+        handler = handler,
+        client = client
+    )
+
+    middleware = [
+        Middleware(AuthenticationMiddleware, backend = backend)
+    ]
+
+    app = FastAPI(middleware=middleware)
+
+
+    @requires("authenticated")
+    @app.get("/")
+    def endpoint(request):
+        return request
+
+
+
+    with test_client_factory(app) as client:
+        print(client.get("/").content)
+
+
+    
+
 
 
 

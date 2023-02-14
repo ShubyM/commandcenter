@@ -1,16 +1,24 @@
 
 import os
 import pytest
-
+import functools
 
 from xprocess import ProcessStarter
-
 from fastapi.testclient import TestClient
 
 
+
 @pytest.fixture
-def test_client_factory() -> TestClient:
-    return TestClient
+def test_client_factory(anyio_backend_name, anyio_backend_options) -> TestClient:
+    # anyio_backend_name defined by:
+    # https://anyio.readthedocs.io/en/stable/testing.html#specifying-the-backends-to-run-on
+    return functools.partial(
+        TestClient,
+        backend=anyio_backend_name,
+        backend_options=anyio_backend_options
+    )
+    # return TestClient
+
 
 
 @pytest.fixture(scope="session")
@@ -36,3 +44,7 @@ def ldap_server(xprocess):
     yield
     # clean up whole process tree afterwards
     xprocess.getinfo("ldap-server").terminate()
+
+
+
+
