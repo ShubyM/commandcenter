@@ -19,7 +19,25 @@
         "objectClass": "",
         "sAMAccountName": "admin",
         "namingContexts": "dc=test",
-        "userPassword": "admin"
+        "userPassword": "admin",
+        "memberOf": ["CN=ADMIN,"]
+    }
+  },
+  {
+    "dn": "uid=non-admin,ou=People,dc=test",
+    "attributes": {
+        "cn": "nonadmin",
+        "givenName": "notaname",
+        "sn": "nonadmin", 
+        "mail": "",
+        "employeeNumber": "", 
+        "company": "",
+        "c": "",
+        "objectCategory": "user",
+        "objectClass": "",
+        "sAMAccountName": "nonadmin",
+        "namingContexts": "dc=test",
+        "userPassword": ""
     }
   }
 ]
