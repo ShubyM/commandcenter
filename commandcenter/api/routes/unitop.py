@@ -28,7 +28,6 @@ from commandcenter.api.dependencies import (
     parse_timestamp,
     requires
 )
-from commandcenter.api.models import Status, StatusOptions
 from commandcenter.auth import BaseUser
 from commandcenter.integrations import (
     AnySubscriberMessage,
@@ -44,6 +43,8 @@ from commandcenter.timeseries import (
 )
 from commandcenter.util import (
     FileWriter,
+    Status,
+    StatusOptions,
     chunked_transfer,
     format_timeseries_rows,
     sse_handler,

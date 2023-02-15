@@ -79,7 +79,6 @@ async def _null_receive(websocket: WebSocket) -> None:
 
 class SSE:
     """Representation of an event from the event stream."""
-
     def __init__(self, id=None, event='message', data='', retry=None):
         self.id = id
         self.event = event
@@ -101,6 +100,7 @@ class SSE:
 
 
 class SSEParser:
+    """Sans-I/O sse parser."""
     def __init__(self, logger: logging.Logger, char_enc: str = "utf-8") -> None:
         self._logger = logger
         self._char_enc = char_enc

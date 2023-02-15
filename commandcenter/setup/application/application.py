@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, Request, Response
 from starlette.middleware import Middleware
 
 from commandcenter.api.config import CC_DEBUG_MODE, CC_HOME
+from commandcenter.api.dependencies.auth import enable_interactive_auth
 from commandcenter.api.setup.application.lifespan import on_shutdown_cleanup
 from commandcenter.api.setup.caching import setup_caching
 from commandcenter.api.setup.logging import setup_logging
@@ -36,6 +37,10 @@ def setup_application(
 
     on_shutdown = on_shutdown or []
     on_shutdown.extend([on_shutdown_cleanup])
+
+    if CC_DEBUG_MODE:
+        dependencies = dependencies or []
+        dependencies.append(Depends(enable_interactive_auth))
 
     app = FastAPI(
         debug=CC_DEBUG_MODE,

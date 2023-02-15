@@ -1,11 +1,19 @@
+from fastapi import Depends
+from fastapi.security import OAuth2PasswordBearer
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.types import Receive, Scope, Send
 
 from commandcenter.auth.models import BaseUser
 
 
+
+scheme = OAuth2PasswordBearer("/users/token", auto_error=False)
+async def enable_interactive_auth(_: str | None = Depends(scheme)) -> None:
+    """Dependency that enables authorization in the interactive docs. Debug only."""
+
+
 class DebugAuthenticationMiddleware(AuthenticationMiddleware):
-    """Authentication middleware for debug mode *ONLY*. This always return an
+    """Authentication middleware for debug mode ONLY. This always return an
     admin user regardless of the backend.
 
     Examples:

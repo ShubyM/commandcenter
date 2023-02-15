@@ -1,4 +1,4 @@
-from commandcenter.api.config.mongo import (
+from commandcenter.config.mongo import (
     CC_MONGO_APPNAME,
     CC_MONGO_CONNECT_TIMEOUT,
     CC_MONGO_HEARTBEAT,
@@ -7,7 +7,7 @@ from commandcenter.api.config.mongo import (
     CC_MONGO_TIMEOUT,
     CC_MONGO_URL
 )
-from commandcenter.api.config.events import (
+from commandcenter.config.events import (
     CC_EVENTS_BUS_EXCHANGE,
     CC_EVENTS_BUS_MAX_BACKOFF,
     CC_EVENTS_BUS_MAX_SUBSCRIBERS,
@@ -22,7 +22,7 @@ from commandcenter.api.config.events import (
     CC_EVENTS_FLUSH_INTERVAL,
     CC_EVENTS_MAX_RETRIES
 )
-from commandcenter.api.setup.rabbitmq import setup_rabbitmq
+from commandcenter.setup.rabbitmq import configure_rabbitmq
 from commandcenter.caching import singleton
 from commandcenter.events import EventBus, MongoEventHandler
 
@@ -54,7 +54,7 @@ def setup_event_bus() -> EventBus:
     
     This must be run in the same thread as the event loop.
     """
-    factory = setup_rabbitmq()
+    factory = configure_rabbitmq()
     return EventBus(
         factory=factory,
         exchange=CC_EVENTS_BUS_EXCHANGE,

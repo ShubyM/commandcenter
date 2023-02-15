@@ -4,16 +4,16 @@ import pathlib
 
 import yaml
 
-from commandcenter.api.config import CC_DEBUG_MODE
-from commandcenter.api.config.logging import CC_LOGGING_CONFIG_PATH
+from commandcenter.config import CC_DEBUG_MODE
+from commandcenter.config.logging import CC_LOGGING_CONFIG_PATH
 
 
 
 DEFAULT_LOGGING_SETTINGS_PATH = pathlib.Path(__file__).parent / "logging.yml"
 
 
-def setup_logging() -> None:
-    """Sets up logging for this runtime."""
+def confgire_logging() -> None:
+    """Configure logging for this runtime."""
     # If the user has specified a logging path and it exists we will ignore the
     # default entirely rather than dealing with complex merging
     path = (

@@ -25,7 +25,6 @@ from commandcenter.api.dependencies import (
     requires,
     validate_event
 )
-from commandcenter.api.models import Status, StatusOptions
 from commandcenter.auth import BaseUser
 from commandcenter.caching.tokens import ReferenceToken
 from commandcenter.events import (
@@ -39,7 +38,7 @@ from commandcenter.events import (
     TopicSubscriptionRequest
 )
 from commandcenter.integrations import iter_subscriber
-from commandcenter.util import sse_handler, ws_handler
+from commandcenter.util import Status, StatusOptions, sse_handler, ws_handler
 
 
 

@@ -27,7 +27,7 @@ class OAuth2ResourceOwnerPasswordCredentials(AuthBase):
     """Implements the OAuth2ResourceOwnerPasswordCredentials flow.
 
     This is ported from [httpx-auth](https://pypi.org/project/httpx-auth/#resource-owner-password-credentials-flow)
-    and has been adapted to work with `aiohttp`.
+    and has been adapted to work with `requests`.
 
     Args:
         token_url: OAuth 2 token URL.

@@ -11,8 +11,8 @@ from commandcenter.api.dependencies import (
     telalert_message,
     requires
 )
-from commandcenter.api.models import Status, StatusOptions
 from commandcenter.comm.providers.telalert import TelAlertClient, TelAlertMessage
+from commandcenter.util import Status, StatusOptions
 
 
 

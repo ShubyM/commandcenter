@@ -64,6 +64,7 @@ def to_expiry(expires_in: int | str) -> float:
 
 
 class OAuthToken(BaseModel):
+    """Model for an OAuth token."""
     token: str
     expiry: float
 

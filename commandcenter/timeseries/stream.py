@@ -83,3 +83,21 @@ async def get_timeseries(
 
         for timestamp, row in iter_timeseries_rows(index, data):
             yield timestamp, row
+    else:
+        # This covers the inclusion of the end time in the query range
+        dispatch = [
+            collection.find(
+                filter={
+                    "timestamp": end_time,
+                    "subscription": hash_
+                },
+                projection={"timestamp": 1, "value": 1, "_id": 0}
+            ).sort("timestamp", 1).to_list(None) for hash_ in hashes
+        ]
+        contents = await asyncio.gather(*dispatch)
+        data = [format_timeseries_content(content) for content in contents]
+        index = get_timestamp_index(data)
+        
+        if index:
+            for timestamp, row in iter_timeseries_rows(index, data):
+                yield timestamp, row

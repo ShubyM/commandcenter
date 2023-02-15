@@ -1,8 +1,8 @@
-from commandcenter.api.config.rabbitmq import CC_RABBITMQ_URL
+from commandcenter.config.rabbitmq import CC_RABBITMQ_URL
 
 
 
-def setup_rabbitmq():
+def configure_rabbitmq():
     """Configure a RabbitMQ connection factory from the environment."""
     try:
         from aiormq import Connection

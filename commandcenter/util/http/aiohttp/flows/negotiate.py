@@ -23,20 +23,17 @@ class NegotiateAuth(AuthFlow):
     Args:
         username: Username.
         password: Password.
-        domain: NT Domain name.
-            Default: '.' for local account.
-        service: Kerberos Service type for remote Service Principal Name.
-            Default: 'HTTP'
-        host: Host name for Service Principal Name.
-            Default: Extracted from request URI
+        domain: NT Domain name. Default: '.' for local account.
+        service: Kerberos Service type for remote Service Principal Name. Default: 'HTTP'
+        host: Host name for Service Principal Name. Default: Extracted from request URI
         delegate: Indicates that the user's credentials are to be delegated to the server.
             Default: False
         opportunistic_auth: If `True` send the Kerberos token with the first
             request. This should only be used in trusted environments.
     
-    If username and password are not specified, the user's default credentials are used.
-    This allows for single-sign-on to domain resources if the user is currently logged on
-    with a domain account.
+    If username and password are not specified, the user's default credentials
+    are used. This allows for single-sign-on to domain resources if the user is
+    currently logged on with a domain account.
     """
 
     def __init__(
