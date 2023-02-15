@@ -21,10 +21,10 @@ def test_client_factory(anyio_backend_name, anyio_backend_options) -> TestClient
 
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def ldap_server(xprocess):
     class Starter(ProcessStarter):
-        timeout = 5
+        timeout = 8
         pattern = "started on port 3004"
 
         popen_kwargs = {
@@ -42,8 +42,7 @@ def ldap_server(xprocess):
     # ensure process is running and return its logfile
     xprocess.ensure("ldap-server", Starter)
     yield
-    # clean up whole process tree afterwards
-    xprocess.getinfo("ldap-server").terminate()
+    xprocess.getinfo("ldap-server").terminate(timeout=5)
 
 
 
