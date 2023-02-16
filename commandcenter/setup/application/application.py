@@ -5,8 +5,8 @@ from typing import Any, Callable, Dict, Type
 from fastapi import Depends, FastAPI, Request, Response
 from starlette.middleware import Middleware
 
-from commandcenter.api.config import CC_DEBUG_MODE, CC_HOME
-from commandcenter.api.dependencies.auth import enable_interactive_auth
+from commandcenter.config import CC_DEBUG_MODE, CC_HOME
+from commandcenter.dependencies.auth import enable_interactive_auth
 from commandcenter.api.setup.application.lifespan import on_shutdown_cleanup
 from commandcenter.api.setup.caching import setup_caching
 from commandcenter.api.setup.logging import setup_logging
