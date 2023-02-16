@@ -12,7 +12,7 @@ from commandcenter.config.logging import CC_LOGGING_CONFIG_PATH
 DEFAULT_LOGGING_SETTINGS_PATH = pathlib.Path(__file__).parent / "logging.yml"
 
 
-def confgire_logging() -> None:
+def configure_logging() -> None:
     """Configure logging for this runtime."""
     # If the user has specified a logging path and it exists we will ignore the
     # default entirely rather than dealing with complex merging

@@ -6,13 +6,12 @@ from fastapi import Depends, FastAPI, Request, Response
 from starlette.middleware import Middleware
 
 from commandcenter.config import CC_DEBUG_MODE, CC_HOME
-from commandcenter.dependencies.auth import enable_interactive_auth
+from commandcenter.auth.debug import enable_interactive_auth
 from commandcenter.setup.application.lifespan import on_shutdown_cleanup
 from commandcenter.setup.caching import setup_caching
-from commandcenter.setup.logging import confgire_logging
-from commandcenter.setup.middleware import 
-from commandcenter.setup.sentry import setup_sentry
-
+from commandcenter.setup.logging import configure_logging
+from commandcenter.setup.middleware import configure_middleware
+from commandcenter.setup.sentry import configure_sentry
 
 
 def setup_application(
@@ -31,7 +30,7 @@ def setup_application(
 ) -> FastAPI:
     """Configure and return a FastAPI application instance."""
     os.makedirs(CC_HOME, exist_ok=True)
-    default_middlware = setup_middleware()
+    default_middlware = configure_middleware()
     middleware = middleware or []
     middleware.extend(default_middlware)
 
@@ -55,8 +54,8 @@ def setup_application(
         root_path=root_path
     )
 
-    setup_logging()
-    setup_sentry()
+    configure_logging()
+    configure_sentry()
     setup_caching()
 
     return app
