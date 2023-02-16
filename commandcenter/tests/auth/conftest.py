@@ -6,7 +6,9 @@ import functools
 from xprocess import ProcessStarter
 from fastapi.testclient import TestClient
 
-
+@pytest.fixture
+def anyio_backend():
+    return 'asyncio'
 
 @pytest.fixture
 def test_client_factory(anyio_backend_name, anyio_backend_options) -> TestClient:
@@ -17,11 +19,8 @@ def test_client_factory(anyio_backend_name, anyio_backend_options) -> TestClient
         backend=anyio_backend_name,
         backend_options=anyio_backend_options
     )
-    # return TestClient
 
-
-
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session", autouse=True)
 def ldap_server(xprocess):
     class Starter(ProcessStarter):
         timeout = 8
