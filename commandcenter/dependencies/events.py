@@ -2,14 +2,14 @@ from fastapi import Depends, HTTPException, status
 from jsonschema import ValidationError, validate
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 
-from commandcenter.api.config.events import (
+from commandcenter.config.events import (
     CC_EVENTS_COLLECTION_NAME,
     CC_EVENTS_DATABASE_NAME,
     CC_TOPICS_COLLECTION_NAME,
     CC_TOPICS_DATABASE_NAME
 )
-from commandcenter.api.dependencies.db import get_database_connection
-from commandcenter.api.setup.events import setup_event_bus, setup_event_handler
+from commandcenter.dependencies.db import get_database_connection
+from commandcenter.setup.events import setup_event_bus, setup_event_handler
 from commandcenter.events import (
     Event,
     EventBus,

@@ -23,6 +23,9 @@ from commandcenter.caching.util import CacheType, NoResult, is_type, repr_
 _CYCLE_PLACEHOLDER = b"newvicx-letsbuildkickassopensourcesoftware"
 
 
+
+
+
 def update_hash(val: Any, hasher, cache_type: CacheType) -> None:
     """Updates a hashlib hasher with the hash of val.
     
@@ -111,6 +114,7 @@ def key_(obj: Any | None) -> Any:
         return obj
 
     if isinstance(obj, tuple):
+        # may not wokr for nested tuples
         if all(map(is_simple, obj)):
             return obj
 

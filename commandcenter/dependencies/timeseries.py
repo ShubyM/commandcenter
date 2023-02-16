@@ -4,16 +4,16 @@ from fastapi import Depends, HTTPException, Request, status
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pydantic import Json
 
-from commandcenter.api.config.timeseries import (
+from commandcenter.config.timeseries import (
     CC_TIMESERIES_DATABASE_NAME,
     CC_TIMESERIES_COLLECTION_NAME,
     CC_UNITOPS_COLLECTION_NAME,
     CC_UNITOPS_DATABASE_NAME
 )
-from commandcenter.api.dependencies.db import get_database_connection
-from commandcenter.api.dependencies.integrations import get_manager
-from commandcenter.api.dependencies.sources import is_authorized
-from commandcenter.api.setup.timeseries import setup_timeseries_handler
+from commandcenter.dependencies.db import get_database_connection
+from commandcenter.dependencies.integrations import get_manager
+from commandcenter.dependencies.sources import is_authorized
+from commandcenter.setup.timeseries import setup_timeseries_handler
 from commandcenter.context import set_source
 from commandcenter.integrations import AnySubscriptionRequest, Subscriber
 from commandcenter.timeseries import (

@@ -1,12 +1,12 @@
 import functools
 from typing import Any, Dict, Type
 
-from commandcenter.api.config.integrations.locks import (
+from commandcenter.config.integrations.locks import (
     CC_INTEGRATIONS_LOCK,
     CC_INTEGRATIONS_LOCK_TTL
 )
-from commandcenter.api.setup.memcached import setup_memcached
-from commandcenter.api.setup.redis import setup_redis
+from commandcenter.setup.memcached import configure_memcached
+from commandcenter.setup.redis import configure_redis
 from commandcenter.caching import singleton
 from commandcenter.integrations import Lock, Locks
 
@@ -21,11 +21,11 @@ def inject_lock_dependencies(func) -> Lock:
     }
     unhashable = {}
     if lock is Locks.MEMCACHED.cls:
-        from commandcenter.api.config.memcached import CC_MEMCACHED_MAX_CONNECTIONS
+        from commandcenter.config.memcached import CC_MEMCACHED_MAX_CONNECTIONS
         hashable.update({"max_workers": CC_MEMCACHED_MAX_CONNECTIONS})
-        unhashable.update({"memcached": setup_memcached()})
+        unhashable.update({"memcached": configure_memcached()})
     elif lock is Locks.REDIS.cls:
-        unhashable.update({"redis": setup_redis()})
+        unhashable.update({"redis": configure_redis()})
     else:
         raise RuntimeError("Received invalid lock.")
 

@@ -1,6 +1,6 @@
 from fastapi import Request
 
-from commandcenter.api.config.scopes import (
+from commandcenter.config.scopes import (
     CC_SCOPES_PIWEB_ACCESS,
     CC_SCOPES_PIWEB_ALLOW_ANY,
     CC_SCOPES_PIWEB_RAISE_ON_NONE,
@@ -8,7 +8,7 @@ from commandcenter.api.config.scopes import (
     CC_SCOPES_TRAXX_ALLOW_ANY,
     CC_SCOPES_TRAXX_RAISE_ON_NONE
 )
-from commandcenter.api.setup.sources import (
+from commandcenter.setup.sources import (
     setup_pi_http_client,
     setup_traxx_http_client
 )

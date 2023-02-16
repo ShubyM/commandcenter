@@ -7,11 +7,11 @@ from starlette.middleware import Middleware
 
 from commandcenter.config import CC_DEBUG_MODE, CC_HOME
 from commandcenter.dependencies.auth import enable_interactive_auth
-from commandcenter.api.setup.application.lifespan import on_shutdown_cleanup
-from commandcenter.api.setup.caching import setup_caching
-from commandcenter.api.setup.logging import setup_logging
-from commandcenter.api.setup.middleware import setup_middleware
-from commandcenter.api.setup.sentry import setup_sentry
+from commandcenter.setup.application.lifespan import on_shutdown_cleanup
+from commandcenter.setup.caching import setup_caching
+from commandcenter.setup.logging import confgire_logging
+from commandcenter.setup.middleware import 
+from commandcenter.setup.sentry import setup_sentry
 
 
 

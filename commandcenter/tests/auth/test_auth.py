@@ -29,7 +29,7 @@ TestUser = BaseUser(
     first_name="Shuby",
     last_name="Mishra",
     email="shubymishra20@gmail.com",
-    upi="12345678",
+    upi=12345678,
     company="abbvie",
     country="USA",
     scopes=set(["ADMIN"]),
@@ -125,13 +125,14 @@ async def test_authentication_backend_valid_headers(ad_test_client: TestClient, 
     assert response.status_code == 200
 
     user_dict = TestUser.dict()
+    # must be done because of LDAP Items
     user_dict["scopes"] = list(user_dict["scopes"])
 
     assert response.json() == user_dict
 
 
 @pytest.mark.asyncio
-async def test_authentication_backend_invalid_headers(ad_test_client: TestClient):
+async def test_authentication_backendi_nvalid_headers(ad_test_client: TestClient):
     response = ad_test_client.get("/is_authenticated")
     assert response.status_code == 200
     assert response.content == b"false"

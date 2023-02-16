@@ -1,7 +1,7 @@
 import functools
 from typing import Any, Dict, Type
 
-from commandcenter.api.config.integrations.managers import (
+from commandcenter.config.integrations.managers import (
     CC_INTEGRATIONS_MANAGER,
     CC_INTEGRATIONS_MANAGER_INITIAL_BACKOFF,
     CC_INTEGRATIONS_MANAGER_MAX_BACKOFF,
@@ -10,10 +10,10 @@ from commandcenter.api.config.integrations.managers import (
     CC_INTEGRATIONS_MANAGER_SUBSCRIBER_MAXLEN,
     CC_INTEGRATIONS_MANAGER_TIMEOUT
 )
-from commandcenter.api.setup.integrations.locks import setup_lock
-from commandcenter.api.setup.rabbitmq import setup_rabbitmq
-from commandcenter.api.setup.redis import setup_redis
-from commandcenter.api.setup.sources import setup_client
+from commandcenter.setup.integrations.locks import setup_lock
+from commandcenter.setup.rabbitmq import configure_rabbitmq
+from commandcenter.setup.redis import configure_redis
+from commandcenter.setup.sources import setup_client
 from commandcenter.caching import singleton
 from commandcenter.context import source_context
 from commandcenter.integrations import Manager, Managers
@@ -33,7 +33,7 @@ def inject_manager_dependencies(func) -> Manager:
     if manager is Managers.LOCAL.cls:
         pass
     elif manager is Managers.RABBITMQ.cls:
-        unhashable.update({"factory": setup_rabbitmq()})
+        unhashable.update({"factory": configure_rabbitmq()})
         hashable.update(
             {
                 "timeout": CC_INTEGRATIONS_MANAGER_TIMEOUT,
@@ -44,7 +44,7 @@ def inject_manager_dependencies(func) -> Manager:
         )
         requires_lock = True
     elif manager is Managers.REDIS.cls:
-        unhashable.update({"redis": setup_redis()})
+        unhashable.update({"redis": configure_redis()})
         hashable.update(
             {
                 "timeout": CC_INTEGRATIONS_MANAGER_TIMEOUT,

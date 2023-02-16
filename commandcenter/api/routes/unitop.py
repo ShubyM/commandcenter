@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorCollection
 from sse_starlette import EventSourceResponse
 
-from commandcenter.api.config.scopes import (
+from commandcenter.config.scopes import (
     COMMANDCENTER_READ_ACCESS,
     COMMANDCENTER_READ_ALLOW_ANY,
     COMMANDCENTER_READ_RAISE_ON_NONE,
@@ -16,7 +16,7 @@ from commandcenter.api.config.scopes import (
     COMMANDCENTER_WRITE_ALLOW_ANY,
     COMMANDCENTER_WRITE_RAISE_ON_NONE
 )
-from commandcenter.api.dependencies import (
+from commandcenter.dependencies import (
     get_file_writer,
     get_timeseries_collection,
     get_timeseries_handler,

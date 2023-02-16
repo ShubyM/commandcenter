@@ -6,12 +6,12 @@ from fastapi import APIRouter, Depends, Query, WebSocket
 from fastapi.responses import StreamingResponse
 from sse_starlette import EventSourceResponse
 
-from commandcenter.api.config.scopes import (
+from commandcenter.config.scopes import (
     CC_SCOPES_TRAXX_ACCESS,
     CC_SCOPES_TRAXX_ALLOW_ANY,
     CC_SCOPES_TRAXX_RAISE_ON_NONE
 )
-from commandcenter.api.dependencies import (
+from commandcenter.dependencies import (
     get_cached_reference,
     get_file_writer,
     get_manager,

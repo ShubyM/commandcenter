@@ -1,6 +1,6 @@
 from typing import Any, Dict, Tuple, Type
 
-from commandcenter.api.config import CC_TIMEZONE
+from commandcenter.config import CC_TIMEZONE
 from commandcenter.caching import singleton
 from commandcenter.exceptions import NotConfigured
 from commandcenter.integrations import Client, Manager, Managers
@@ -16,7 +16,7 @@ def resolve_pi_web_client_dependencies(
     """
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
-    from commandcenter.api.config.sources.pi_web import (
+    from commandcenter.config.sources.pi_web import (
         CC_SOURCES_PIWEB_AUTH_DELEGATE,
         CC_SOURCES_PIWEB_AUTH_DOMAIN,
         CC_SOURCES_PIWEB_AUTH_OPPORTUNISTIC,
@@ -95,7 +95,7 @@ def setup_pi_http_client():
     """
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
-    from commandcenter.api.config.sources.pi_web import (
+    from commandcenter.config.sources.pi_web import (
         CC_SOURCES_PIWEB_AUTH_DELEGATE,
         CC_SOURCES_PIWEB_AUTH_DOMAIN,
         CC_SOURCES_PIWEB_AUTH_OPPORTUNISTIC,

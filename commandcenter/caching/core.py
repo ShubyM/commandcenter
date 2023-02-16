@@ -70,6 +70,7 @@ def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
         cache = cached_func.get_function_cache(function_key=function_key)
         with cache.execution_lock:
             rw = read_write_cached_value(cached_func, function_key, func, *args, **kwargs)
+            # clever!
             try:
                 next(rw)
             except StopIteration as e:
@@ -97,7 +98,7 @@ def create_cache_wrapper(cached_func: CachedFunction) -> Callable[..., Any]:
             else:
                 return_value = await func(*args, **kwargs)
                 try:
-                    rw.send(return_value)
+                    rw.send(return_value) # this is a cache iss
                 except StopIteration:
                     pass
                 return return_value
@@ -222,6 +223,8 @@ def make_function_key(cache_type: CacheType, func: FunctionType) -> str:
 
     # Include the function's source code in its hash. If the source code can't
     # be retrieved, fall back to the function's bytecode instead.
+
+    # do you need this?
     source_code: str | bytes
     try:
         source_code = inspect.getsource(func)

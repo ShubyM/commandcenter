@@ -1,20 +1,19 @@
 from fastapi import APIRouter, Depends
 from fastapi.background import BackgroundTasks
 
-from commandcenter.api.config.scopes import (
+from commandcenter.config.scopes import (
     CC_SCOPES_TELALERT_ACCESS,
     CC_SCOPES_TELALERT_ALLOW_ANY,
     CC_SCOPES_TELALERT_RAISE_ON_NONE
 )
-from commandcenter.api.dependencies import (
+from commandcenter.dependencies import (
     get_telalert_client,
     telalert_message,
     requires
 )
+
 from commandcenter.comm.providers.telalert import TelAlertClient, TelAlertMessage
 from commandcenter.util import Status, StatusOptions
-
-
 
 router = APIRouter(
     prefix="/telalert",

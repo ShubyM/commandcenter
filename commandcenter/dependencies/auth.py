@@ -1,4 +1,4 @@
-from commandcenter.api.setup.auth import setup_auth_backend
+from commandcenter.setup.auth import setup_auth_backend
 from commandcenter.auth import AuthenticationClient, TokenHandler
 
 

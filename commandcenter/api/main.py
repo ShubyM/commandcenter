@@ -6,7 +6,7 @@ from commandcenter.api.routes import (
     unitop_,
     users_
 )
-from commandcenter.api.setup.application import setup_application
+from commandcenter.setup.application import setup_application
 
 
 

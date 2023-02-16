@@ -7,12 +7,12 @@ from fastapi.responses import StreamingResponse
 from sse_starlette import EventSourceResponse
 
 import anyio
-from commandcenter.api.config.scopes import (
+from commandcenter.config.scopes import (
     CC_SCOPES_PIWEB_ACCESS,
     CC_SCOPES_PIWEB_ALLOW_ANY,
     CC_SCOPES_PIWEB_RAISE_ON_NONE
 )
-from commandcenter.api.dependencies import (
+from commandcenter.dependencies import (
     get_cached_reference,
     get_file_writer,
     get_manager,

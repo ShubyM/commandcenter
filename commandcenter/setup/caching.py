@@ -1,6 +1,6 @@
-from commandcenter.api.config.caching import CC_CACHE_DIR, CC_CACHE_BACKEND
-from commandcenter.api.setup.memcached import setup_memcached
-from commandcenter.api.setup.redis import setup_redis
+from commandcenter.config.caching import CC_CACHE_DIR, CC_CACHE_BACKEND
+from commandcenter.setup.memcached import configure_memcached
+from commandcenter.setup.redis import configure_redis
 from commandcenter.caching import (
     Caches,
     set_cache_dir,

@@ -1,7 +1,7 @@
 import functools
 from typing import Type
 
-from commandcenter.api.config.auth import (
+from commandcenter.config.auth import (
     CC_AUTH_ALGORITHM,
     CC_AUTH_BACKEND,
     CC_AUTH_SECRET_KEY,
@@ -23,7 +23,7 @@ def inject_backend_dependencies(func) -> BaseAuthenticationBackend:
     
     hashable = {}
     if backend is AuthBackends.ACTIVE_DIRECTORY.cls:
-        from commandcenter.api.config.auth.backends.activedirectory import (
+        from commandcenter.config.auth.backends.activedirectory import (
             CC_AUTH_BACKENDS_AD_DOMAIN,
             CC_AUTH_BACKENDS_AD_HOSTS,
             CC_AUTH_BACKENDS_AD_MAXCONN,

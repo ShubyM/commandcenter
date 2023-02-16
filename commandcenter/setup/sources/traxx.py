@@ -1,6 +1,6 @@
 from typing import Any, Dict, Tuple, Type
 
-from commandcenter.api.config import CC_TIMEZONE
+from commandcenter.config import CC_TIMEZONE
 from commandcenter.caching import singleton
 from commandcenter.exceptions import NotConfigured
 from commandcenter.integrations import Client, Manager, Managers
@@ -16,7 +16,7 @@ def resolve_traxx_client_dependencies(
     """
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
-    from commandcenter.api.config.sources.traxx import (
+    from commandcenter.config.sources.traxx import (
         CC_SOURCES_TRAXX_AUTH_FILEPATH,
         CC_SOURCES_TRAXX_CHANNEL_NAME,
         CC_SOURCES_TRAXX_HTTP_BASE_URL,
@@ -77,7 +77,7 @@ def setup_traxx_http_client():
     """
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
-    from commandcenter.api.config.sources.traxx import (
+    from commandcenter.config.sources.traxx import (
         CC_SOURCES_TRAXX_AUTH_FILEPATH,
         CC_SOURCES_TRAXX_HTTP_BASE_URL,
         CC_SOURCES_TRAXX_HTTP_KEEPALIVE_TIMEOUT,
