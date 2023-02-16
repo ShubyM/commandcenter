@@ -17,11 +17,11 @@ def setup_caching():
     if CC_CACHE_DIR:
         set_cache_dir(CC_CACHE_DIR)
     if CC_CACHE_BACKEND is Caches.MEMCACHED.cls:
-        memcached = setup_memcached()
+        memcached = configure_memcached()
         set_memcached_client(memcached)
         set_default_backend(Caches.MEMCACHED.value)
     elif CC_CACHE_BACKEND is Caches.REDIS.cls:
-        redis = setup_redis(sync=True)
+        redis = configure_redis(sync=True)
         set_redis_client(redis)
         set_default_backend(Caches.REDIS.value)
     
