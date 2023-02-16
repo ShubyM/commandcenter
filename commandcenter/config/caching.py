@@ -2,7 +2,7 @@ import pathlib
 
 from starlette.config import Config
 
-from commandcenter.api.config import CC_HOME
+from commandcenter.config import CC_HOME
 from commandcenter.caching import Caches
 
 

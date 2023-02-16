@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from commandcenter.auth import AuthenticationClient, BaseUser, Token, TokenHandler
 from commandcenter.auth.protocols import AuthenticationClient
-from commandcenter.api.dependencies import (
+from commandcenter.dependencies import (
     get_auth_client,
     get_token_handler,
     requires

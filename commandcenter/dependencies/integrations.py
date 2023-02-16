@@ -1,4 +1,4 @@
-from commandcenter.api.setup.integrations.managers import setup_manager
+from commandcenter.setup.integrations.managers import setup_manager
 from commandcenter.integrations import Manager
 
 
