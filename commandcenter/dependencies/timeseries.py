@@ -13,7 +13,7 @@ from commandcenter.config.timeseries import (
 from commandcenter.dependencies.db import get_database_connection
 from commandcenter.dependencies.integrations import get_manager
 from commandcenter.dependencies.sources import is_authorized
-from commandcenter.setup.timeseries import setup_timeseries_handler
+from commandcenter.setup.timeseries import configure_timeseries_handler
 from commandcenter.context import set_source
 from commandcenter.integrations import AnySubscriptionRequest, Subscriber
 from commandcenter.timeseries import (
@@ -26,7 +26,7 @@ from commandcenter.timeseries import (
 
 def get_timeseries_handler() -> MongoTimeseriesHandler:
     """Dependency for retrieving a timeseries handler."""
-    return setup_timeseries_handler()
+    return configure_timeseries_handler()
 
 
 async def get_timeseries_collection(

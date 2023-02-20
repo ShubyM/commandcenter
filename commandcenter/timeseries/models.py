@@ -52,7 +52,7 @@ class UnitOp(Tokenable):
     data_mapping: Dict[str, AnySubscription]
     meta: Dict[str, Any] | None
 
-    @validator
+    @validator("unitop_id")
     def _validate_unitop_id(cls, v: str) -> str:
         if " " in v:
             raise ValueError("'unitop_id' cannot contain spaces.")
